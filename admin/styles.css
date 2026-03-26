@@ -3,8 +3,6 @@
    ========================================================================== */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 :root {
-  --stallz-glass-blur: 18px;
-
   --bg-color: #0f172a;
   --primary: #4ade80;
   --primary-dark: #22c55e;
@@ -53,35 +51,6 @@ body {
   width: 100%;
   font-feature-settings: "tnum" on, "cv11" on;
   transition: background-color 0.5s ease, color 0.5s ease;
-  -webkit-user-select: none;
-  -moz-user-select: none;body {
-  margin: 0;
-  font-family: "Inter", sans-serif;
-  background-color: var(--bg-color);
-  color: var(--text-main);
-  min-height: 100vh;
-  padding-bottom: 90px;
-  line-height: 1.4;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-  width: 100%;
-  font-feature-settings: "tnum" on, "cv11" on;
-  transition: background-color 0.5s ease, color 0.5s ease;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-  -ms-user-select: none;
-  user-select: none;
-}
-
-input, textarea, select {
-  -webkit-user-select: auto;
-  -moz-user-select: auto;
-  -ms-user-select: auto;
-  user-select: auto;
 }
 
 .app-shell {
@@ -202,10 +171,9 @@ input, textarea, select {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
 
-/* Light Mode Skeleton Override */
 [data-theme="light"] .skeleton {
-  background: linear-gradient(110deg, rgba(0, 0, 0, 0.03) 25%, rgba(0, 0, 0, 0.08) 50%, rgba(0, 0, 0, 0.03) 75%);
-  background-size: 400% 100%;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.05) 25%, rgba(0, 0, 0, 0.12) 50%, rgba(0, 0, 0, 0.05) 75%);
+  background-size: 200% 100%;
 }
 
 /* =========================================
@@ -344,102 +312,6 @@ input, textarea, select {
     transition: color .2s ease !important;
   }
 
-/* =========================================================
-   9.0 | LOAN HISTORY CARD (Compact) - Responsive
-   ========================================================= */
-#loanHistoryModal .lh-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--card-bg) 85%, transparent);
-  border: 1px solid var(--divider);
-}
-
-#loanHistoryModal .lh-card .id-col {
-  min-width: 64px;
-  font-family: 'Courier New', monospace;
-  font-weight: 800;
-  font-size: 0.85rem;
-  color: var(--text-main);
-}
-
-#loanHistoryModal .lh-card .meta {
-  flex: 1;
-  min-width: 0;
-}
-
-#loanHistoryModal .lh-card .meta .title {
-  font-weight: 700;
-  font-size: 0.92rem;
-  color: var(--text-main);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-
-#loanHistoryModal .lh-card .meta .sub {
-  margin-top: 2px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  font-family: 'Courier New', monospace;
-}
-
-#loanHistoryModal .lh-card .right {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-end;
-}
-
-#loanHistoryModal .lh-card .right button {
-  padding: 6px 8px;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-/* Two-column labels/values inside loan-history cards */
-#loanHistoryModal .lh-grid { display: flex; gap: 12px; align-items: center; }
-#loanHistoryModal .lh-left { min-width: 110px; display: flex; flex-direction: column; gap: 6px; }
-#loanHistoryModal .lh-left .lh-label { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
-#loanHistoryModal .lh-right { display: flex; flex-direction: column; gap: 6px; }
-#loanHistoryModal .lh-right .lh-value { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-@media (min-width: 521px) {
-  /* On larger screens keep lh-card horizontal */
-  #loanHistoryModal .lh-card { flex-direction: row; }
-}
-
-@media (max-width: 520px) {
-  /* On phones, stack labels above values (vertical list) */
-  #loanHistoryModal .lh-grid { flex-direction: column; }
-  #loanHistoryModal .lh-left { flex-direction: row; gap: 12px; min-width: 0; }
-  #loanHistoryModal .lh-left .lh-label { font-size: 0.78rem; text-transform: none; color: var(--text-muted); }
-  #loanHistoryModal .lh-right .lh-value { white-space: normal; }
-}
-
-@media (max-width: 520px) {
-  #loanHistoryModal .lh-card {
-    gap: 8px;
-    padding: 8px;
-    align-items: stretch;
-    flex-direction: column;
-  }
-  #loanHistoryModal .lh-card .id-col { min-width: 48px; font-size: 0.78rem; }
-  #loanHistoryModal .lh-card .meta .title { font-size: 0.88rem; }
-  #loanHistoryModal .lh-card .meta .sub { font-size: 0.72rem; }
-  /* Stack actions below details and stretch content */
-  #loanHistoryModal .lh-card .id-col { margin-bottom: 6px; }
-  #loanHistoryModal .lh-card .meta { margin-bottom: 6px; }
-  #loanHistoryModal .lh-card .right { flex-direction: row; gap: 8px; justify-content: flex-end; width: 100%; }
-  #loanHistoryModal .lh-card .right button { padding: 6px 8px; font-size: 0.72rem; }
-  /* Make table cell padding tighter on phone screens */
-  #loanHistoryModal tbody tr td { padding: 6px 4px !important; }
-}
-
   .top-nav .nav-btn::before {
     content: "" !important;
     position: absolute !important;
@@ -550,34 +422,12 @@ input, textarea, select {
 
 .notification-dropdown {
   position: absolute; top: 120%; right: 0; width: 300px;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(var(--stallz-glass-blur)); -webkit-backdrop-filter: blur(var(--stallz-glass-blur));
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  z-index: 1001;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.4);
-  overflow: hidden;
-  transform-origin: top right;
-
-  /* Matches the hidden state of .modal-hidden .modal */
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: scale(0.95) translateY(20px);
-  /* Matches the universal close transition */
-  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease, visibility 0s linear 0.3s;
+  background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px;
+  display: none; flex-direction: column; z-index: 1001;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.4); overflow: hidden; transform-origin: top right;
 }
-
-.notification-dropdown.show {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: scale(1) translateY(0);
-  /* Matches the universal open transition */
-  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease, visibility 0s;
-}
+.notification-dropdown.show { display: flex !important; z-index: 1001; animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .notif-item { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; display: flex; gap: 10px; align-items: center; }
 .notif-item:hover { background: rgba(255,255,255,0.05); }
 
@@ -725,40 +575,13 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 .spinner { width: 50px; height: 50px; border: 3px solid rgba(59, 130, 246, 0.3); border-radius: 50%; border-top-color: #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); animation: spin 1s infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* =========================================
-   PREMIUM SKELETON LOADER ENHANCEMENTS
-   ========================================= */
-@keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-@keyframes pulseBg {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-}
-
-.skeleton {
-    background: linear-gradient(110deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.03) 75%);
-    background-size: 400% 100%;
-    animation: shimmer 1.5s infinite linear, pulseBg 2s infinite ease-in-out;
-}
-
-@keyframes skelPopIn {
-    0% { opacity: 0; transform: translateY(15px) scale(0.98); }
-    100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.skel-stagger {
-    opacity: 0;
-    /* First animation handles the pop-in, second handles the shimmer/pulse */
-    animation: skelPopIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Ensure children inherit the animation smoothly */
-.skel-stagger .skeleton {
-    animation: shimmer 1.5s infinite linear;
-}
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.skeleton { background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.1) 37%, rgba(255, 255, 255, 0.05) 63%); background-size: 200% 100%; animation: shimmer 1.5s infinite linear; border-radius: 8px; }
+@keyframes skelPopIn { 0% { opacity: 0; transform: translateY(15px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+.skel-stagger { opacity: 0; animation: skelPopIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards, shimmer 1.5s infinite linear; }
+.sk-header { width: 100%; height: 80px; border-radius: 20px; margin-bottom: 20px; }
+.sk-card { width: 100%; height: 250px; border-radius: 16px; margin-bottom: 20px; }
+.sk-row { width: 100%; height: 60px; border-radius: 10px; margin-bottom: 10px; }
 
 /* ==========================================================================
    CLIENT PORTAL THEME MATCH OVERRIDES (Admin)
@@ -795,30 +618,13 @@ input:checked + .slider:before { transform: translateX(20px); }
 [data-theme="light"] .icon-btn:hover, [data-theme="light"] .profile-btn:hover { background: rgba(22, 163, 74, 0.10); }
 
 .notification-wrapper { position: relative; }
-/* Numeric badge (sits slightly OUTSIDE the icon) */
-.notification-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  background: #ef4444;
-  color: #fff;
-  border-radius: 999px;
-  border: 2px solid var(--bg-color);
-  font-size: 11px;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: none;
-}
+.notification-dot { display: none; position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; background: #ef4444; border-radius: 50%; border: 1px solid var(--bg-color); animation: pulse-red 2s infinite; }
+.notification-dot.show { display: block; }
 @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); } 70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
 
-.notification-wrapper .notification-dropdown { position: absolute !important; top: 100% !important; right: -10px !important; margin-top: 15px !important; width: 320px !important; max-width: calc(100vw - 32px) !important; background: rgba(30, 41, 59, 0.85) !important; backdrop-filter: blur(var(--stallz-glass-blur)) !important; -webkit-backdrop-filter: blur(var(--stallz-glass-blur)) !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; border-radius: 20px !important; display: none; flex-direction: column; z-index: 1001 !important; box-shadow: 0 20px 50px rgba(0,0,0,0.5) !important; overflow: hidden; transform-origin: top right;  }
+.notification-wrapper .notification-dropdown { position: absolute !important; top: 100% !important; right: -10px !important; margin-top: 15px !important; width: 320px !important; max-width: calc(100vw - 32px) !important; background: rgba(30, 41, 59, 0.85) !important; backdrop-filter: blur(25px) !important; -webkit-backdrop-filter: blur(25px) !important; border: 1px solid rgba(255, 255, 255, 0.2) !important; border-radius: 20px !important; display: none; flex-direction: column; z-index: 1001 !important; box-shadow: 0 20px 50px rgba(0,0,0,0.5) !important; overflow: hidden; transform-origin: top right; animation: scaleIn 0.2s ease-out forwards; }
 .dropdown-header { padding: 15px 20px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); background: rgba(0,0,0,0.2); }
-.dropdown-body { max-height: 250px; overflow-y: auto; }
+.dropdown-body { max-height: 340px; overflow-y: auto; }
 .dropdown-body::-webkit-scrollbar { width: 6px; }
 .dropdown-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
 
@@ -895,19 +701,6 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
   tbody td:last-child .btn-icon, tbody td:last-child a.btn-icon { flex: 1 !important; height: 44px !important; font-size: 1.15rem !important; display: flex !important; justify-content: center !important; align-items: center !important; margin: 0 !important; }
 }
 
-/* Compact overrides specifically for Loan History modal on small screens */
-#loanHistoryModal .table-wrapper { margin-top: 8px !important; }
-#loanHistoryModal tbody tr { margin-bottom: 8px !important; padding: 6px !important; box-shadow: none !important; border-radius: 12px !important; background: transparent !important; border: 1px solid rgba(255,255,255,0.03) !important; }
-#loanHistoryModal tbody td { padding: 4px 6px !important; border: none !important; display: block !important; }
-#loanHistoryModal tbody td[data-label="Client"] { padding-bottom: 4px !important; }
-#loanHistoryModal .lh-card { padding: 8px !important; }
-
-@media (max-width: 420px) {
-  #loanHistoryModal tbody tr { margin-bottom: 6px !important; padding: 6px !important; }
-  #loanHistoryModal .lh-card { gap: 8px !important; padding: 6px 8px !important; }
-  #loanHistoryModal tbody td { padding: 4px 6px !important; }
-}
-
 /* ==========================================================================
    MOBILE DENSITY / NO HORIZONTAL SCROLL
    ========================================================================== */
@@ -924,6 +717,102 @@ img, svg, video, canvas { max-width: 100%; height: auto; }
 .client-filter-hint { padding: 0 10px 12px; font-size: 0.75rem; color: var(--text-muted); opacity: 0.9; }
 tbody tr { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 20px; margin-bottom: 20px; padding: 20px; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3); position: relative; transition: transform 0.2s ease; overflow: hidden; }
 
+
+
+/* =========================================
+   9.1 | LOANS TAB SINGLE SURFACE
+   ========================================= */
+.loan-section-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.loan-main-surface {
+  background: var(--glass-bg) !important;
+  border: var(--glass-border) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.30) !important;
+  padding: 24px !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.loan-main-surface > h2 {
+  margin-top: 0;
+}
+
+.loan-main-surface .table-wrapper {
+  margin-top: 16px;
+  background: transparent !important;
+  border: none !important;
+}
+
+.loan-main-surface tbody tr {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: 18px !important;
+  margin-bottom: 14px !important;
+  padding: 18px !important;
+  box-shadow: 0 10px 24px -14px rgba(0,0,0,0.34) !important;
+  overflow: hidden;
+}
+
+.loan-main-surface tbody tr:first-child {
+  padding-top: 18px !important;
+}
+
+.loan-main-surface tbody tr:last-child {
+  border-bottom: 1px solid var(--card-border) !important;
+  padding-bottom: 18px !important;
+  margin-bottom: 0 !important;
+}
+
+.loan-main-surface tbody tr:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 16px 34px -16px rgba(0,0,0,0.42) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+}
+
+.loan-main-surface tbody td[data-label="ID"] {
+  top: 22px;
+  right: 0;
+}
+
+.loan-main-surface tbody td[data-label="Client"] {
+  padding-right: 52px;
+}
+
+.loan-main-surface .filters-row {
+  margin-bottom: 10px;
+}
+
+.loan-ledger-wrapper {
+  background: transparent !important;
+  border-radius: 16px !important;
+  border: 1px solid var(--divider) !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 520px) {
+  .loan-main-surface {
+    padding: 18px !important;
+  }
+
+  .loan-main-surface tbody tr {
+    padding: 16px !important;
+    margin-bottom: 12px !important;
+    border-radius: 16px !important;
+  }
+
+  .loan-main-surface tbody td[data-label="Client"] {
+    padding-right: 42px;
+  }
+}
 @media (max-width: 420px) {
   .stats-grid { grid-template-columns: 1fr; }
   .stat-card { padding: 12px; }
@@ -984,7 +873,7 @@ tbody tr { background: var(--card-bg); border: 1px solid var(--card-border); bor
 }
 
 /* ============================================================================
-   PROFESSIONAL SIDEBAR REDESIGN (v3.5 - DAY MODE GLASS)
+   PROFESSIONAL SIDEBAR REDESIGN (Consolidated v3.0)
    ============================================================================ */
 
 /* 1. MAIN CONTAINER & ANIMATION */
@@ -999,21 +888,14 @@ tbody tr { background: var(--card-bg); border: 1px solid var(--card-border); bor
     display: flex !important;
     flex-direction: column !important;
     padding: 0 !important;
-    /* 🚀 White-to-Green Morphing Glass */
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(22, 163, 74, 0.08) 100%) !important;
-    backdrop-filter: blur(var(--stallz-glass-blur)) !important;
-    -webkit-backdrop-filter: blur(var(--stallz-glass-blur)) !important;
-    border-left: 1px solid rgba(255, 255, 255, 0.4) !important;
-    box-shadow: -10px 0 50px rgba(0,0,0,0.1) !important;
+    background: var(--bg-color) !important;
+    border-left: 1px solid var(--divider) !important;
+    box-shadow: -10px 0 50px rgba(0,0,0,0.5) !important;
     transform: translate3d(100%, 0, 0) !important;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
     will-change: transform;
-}
-
-/* Dark Mode Override for Sidebar */
-html:not([data-theme="light"]) .sidebar {
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(22, 163, 74, 0.15) 100%) !important;
-    border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 
 .sidebar.open {
@@ -1023,26 +905,25 @@ html:not([data-theme="light"]) .sidebar {
 /* 2. HEADER SECTION */
 .sidebar-header {
     flex: 0 0 auto;
-    padding: 30px 24px 10px 24px;
+    padding: 24px 24px 10px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 
 .sidebar-heading {
-    font-size: 1.3rem;
+    font-size: 1.4rem;
     font-weight: 800;
     letter-spacing: -0.5px;
     margin: 0;
     color: var(--text-main);
-    text-transform: uppercase;
 }
 
 .close-btn {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(255,255,255,0.05);
     color: var(--text-muted);
     border: none;
     display: flex;
@@ -1051,10 +932,9 @@ html:not([data-theme="light"]) .sidebar {
     cursor: pointer;
     transition: all 0.2s;
 }
-
 .close-btn:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+    background: rgba(255,255,255,0.1);
+    color: var(--text-main);
     transform: rotate(90deg);
 }
 
@@ -1062,69 +942,76 @@ html:not([data-theme="light"]) .sidebar {
 .sidebar-content-scroll {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 20px;
+    padding: 10px 24px;
     scrollbar-width: none;
     -ms-overflow-style: none;
 }
 .sidebar-content-scroll::-webkit-scrollbar { display: none; }
+#profileSidebar, .sidebar { -ms-overflow-style: none; scrollbar-width: none; }
+#profileSidebar::-webkit-scrollbar, .sidebar::-webkit-scrollbar { display: none; }
 
 /* 4. PROFILE HERO CARD */
 .profile-hero {
   display: flex;
+  flex-direction: row;
   align-items: center;
+  text-align: left;
   gap: 15px;
-  padding: 16px;
-  margin-bottom: 24px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 20px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.03);
-}
-
-html:not([data-theme="light"]) .profile-hero {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  margin-top: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: inset 0 0 20px rgba(255,255,255,0.02), 0 8px 20px rgba(0,0,0,0.2);
 }
 
 .profile-avatar-lg {
-  width: 50px !important;
-  height: 50px !important;
-  border-radius: 50% !important;
-  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
-  color: white !important;
+  width: 54px !important;
+  height: 54px !important;
+  font-size: 1.2rem !important;
   font-weight: 800;
-  font-size: 1.2rem;
+  border: 2px solid rgba(255,255,255,0.1) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.1), 0 6px 12px rgba(0,0,0,0.3);
+  background: linear-gradient(135deg, rgba(74,222,128,0.12), rgba(59,130,246,0.06));
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.2);
   flex-shrink: 0;
 }
 
 .profile-details {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
   overflow: hidden;
 }
 
 .profile-name {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--text-main);
+  margin: 0;
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
+  width: 100%;
 }
 
 .profile-badge {
   display: inline-flex;
-  padding: 2px 8px;
-  background: rgba(22, 163, 74, 0.1);
-  color: #16a34a;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  color: #4ade80;
   font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: 0.5px;
-  border-radius: 6px;
+  border-radius: 8px;
   text-transform: uppercase;
-  width: fit-content;
 }
 
 /* 5. SECTIONS & MENU ITEMS */
@@ -1132,188 +1019,168 @@ html:not([data-theme="light"]) .profile-hero {
     margin-bottom: 24px;
 }
 
+.section-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
 .section-label {
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
+    letter-spacing: 1px;
     color: var(--text-muted);
-    margin-bottom: 12px;
-    padding-left: 5px;
     opacity: 0.8;
+}
+
+.section-subtext {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    opacity: 0.6;
+    margin-bottom: 12px;
+    line-height: 1.4;
+    padding-right: 10px;
+}
+
+.btn-text-action {
+    background: rgba(74, 222, 128, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.2);
+    color: var(--primary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 6px 14px;
+    transition: all 0.2s;
+}
+.btn-text-action:hover {
+    background: rgba(74, 222, 128, 0.2);
+    transform: translateY(-1px);
 }
 
 .menu-item {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     padding: 12px 16px;
-    background: rgba(255, 255, 255, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.8);
-    border-radius: 50px; /* Pill Shape */
-    margin-bottom: 8px;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    cursor: pointer;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 14px;
+    transition: all 0.2s ease;
 }
-
-html:not([data-theme="light"]) .menu-item {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
 .menu-item:hover {
-    transform: translateY(-2px);
-    background: #ffffff;
-    border-color: #16a34a;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    transform: translateY(-1px);
 }
-/* ===== Notifications menu item (admin sidebar) ===== */
-button.menu-item.menu-item--action{
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  background: transparent; /* base, theme variants below still apply */
-  border: none;
-  padding: 0;
-}
-button.menu-item.menu-item--action .menu-icon-wrapper,
-button.menu-item.menu-item--action .menu-text{
-  pointer-events: none; /* keep whole row clickable */
-}
-.menu-pill{
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 900;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.10);
-  color: #e5e7eb;
-  letter-spacing: 0.2px;
-}
-html:not([data-theme="light"]) .menu-pill{
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.08);
-}
-html[data-theme="light"] .menu-pill{
-  border: 1px solid rgba(15,23,42,0.12);
-  background: rgba(15,23,42,0.06);
-  color: #0f172a;
-}
-
 
 .menu-icon-wrapper {
-    color: #16a34a;
-    font-size: 1.1rem;
-    width: 20px;
-    text-align: center;
-}
-
-/* Fix alignment for title and subtext */
-.menu-text {
+    width: 38px;
+    height: 38px;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     justify-content: center;
-    flex: 1;
-    gap: 2px;
-}
-
-.menu-title {
-    font-weight: 800;
-    font-size: 0.95rem;
-    color: var(--text-main);
-    line-height: 1.1;
-}
-
-.menu-sub {
-    font-size: 0.75rem;
-    font-weight: 500;
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
     color: var(--text-muted);
-    opacity: 0.8;
-    line-height: 1.1;
+    font-size: 1rem;
 }
 
-.btn-text-action {
-    background: rgba(22, 163, 74, 0.1);
-    color: #16a34a;
-    border: none;
-    font-size: 0.7rem;
-    font-weight: 800;
-    padding: 4px 10px;
-    border-radius: 6px;
-    text-transform: uppercase;
-    cursor: pointer;
+.menu-text { flex: 1; }
+.menu-title { display: block; font-weight: 600; font-size: 1rem; color: var(--text-main); }
+.menu-sub { display: block; font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+
+/* 6. TEAM TABLE */
+.team-list-container {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 14px;
+    overflow: hidden;
 }
 
-/* 6. FOOTER SECTION */
+.team-table { width: 100%; border-collapse: collapse; }
+
+.team-table td {
+    padding: 10px 12px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    display: table-cell !important;
+    vertical-align: middle;
+    font-size: 0.85rem;
+    color: var(--text-main);
+}
+.team-table tr:last-child td { border-bottom: none !important; }
+
+/* 7. FOOTER SECTION */
 .sidebar-footer {
     flex: 0 0 auto;
-    padding: 20px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    background: rgba(0, 0, 0, 0.15); /* Seamless dark mode blend */
+    padding: 12px 16px;
+    border-top: 1px solid var(--divider);
+    background: rgba(0,0,0,0.15);
 }
 
 .btn-logout {
     width: 100%;
-    padding: 14px;
-    border-radius: 50px; /* Pill Shape */
-    background: rgba(239, 68, 68, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px;
+    background: rgba(239, 68, 68, 0.08);
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.2);
-    font-weight: 800;
-    font-size: 0.9rem;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
     transition: all 0.2s;
 }
-
 .btn-logout:hover {
-    background: #ef4444;
-    color: white;
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3);
-}
-
-/* Centered footer links */
-.sidebar-footer-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: center;
-    margin-top: 15px;
-}
-
-.footer-links {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-}
-
-.footer-link-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
 }
 
 .app-version-label {
+    text-align: center;
     font-size: 0.6rem;
     color: var(--text-muted);
-    font-weight: 800;
+    margin-top: 0;
+    font-family: 'Inter', sans-serif;
     opacity: 0.5;
+    letter-spacing: 0.5px;
 }
+
+/* Sidebar footer actions (centered buttons) */
+.sidebar-footer-actions { width: 100%; padding-top: 4px; display: flex; flex-direction: column; gap: 4px; align-items: center;}
+.footer-actions { display: flex; gap: 16px; align-items: center; justify-content: center; width: 100%; }
+.footer-actions .btn-text-action { padding: 0; font-size: 0.85rem; border-radius: 0; transition: color 0.2s; color: var(--text-muted); font-weight: 600;}
 
 /* Mobile overrides */
 @media (max-width: 520px) {
-  .sidebar { width: 88%; }
-  .sidebar-heading { font-size: 1.2rem; }
-  .profile-hero { padding: 12px; margin-bottom: 20px; }
+  .sidebar { width: min(86vw, 320px); }
+  .sidebar-content-scroll { padding: 6px 12px; }
+  .profile-hero { padding: 10px 12px; gap: 12px; margin-bottom: 15px; }
+  .profile-avatar-lg { width: 48px !important; height: 48px !important; font-size: 1.1rem !important; }
+  .profile-name { font-size: 0.95rem; }
+  .profile-badge { font-size: 0.6rem; padding: 2px 6px; }
+  .team-table td { padding: 8px 10px !important; font-size: 0.8rem; }
+  .footer-actions .btn-text-action { font-size: 0.8rem; }
+  .sidebar-footer { padding: 12px 16px; }
+  .btn-logout { padding: 10px 12px; font-size: 0.85rem; }
+  .sidebar-section { margin-bottom: 20px; }
+  .section-label { font-size: 0.75rem; }
+  .section-subtext { font-size: 0.78rem; margin-bottom: 8px; }
+  .btn-text-action { padding: 6px 12px; font-size: 0.7rem; }
   .menu-item { padding: 10px 14px; }
+  .menu-text .menu-title { font-size: 0.95rem; }
+  .menu-text .menu-sub { font-size: 0.75rem; }
 }
+
 /* =========================================
    LIGHT MODE OVERRIDES (Sidebar Specific)
    ========================================= */
@@ -1334,7 +1201,7 @@ html[data-theme="light"] .menu-pill{
    MOBILE NOTIFICATION POPUP FIXES
    ========================================= */
 @media (max-width: 768px) {
-  #notifDropdown.notification-dropdown { position: fixed !important; top: calc(45px + env(safe-area-inset-top)) !important; left: 50% !important; right: auto !important; transform: translateX(-50%); width: 80% !important; max-width: 300px !important; max-height: 45vh !important; border-radius: 18px !important; overflow-y: auto !important; display: none !important; z-index: 20005 !important; background: rgba(15, 23, 42, 0.98) !important; border: 1px solid rgba(255, 255, 255, 0.15) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important; backdrop-filter: blur(20px) !important; }
+  #notifDropdown.notification-dropdown { position: fixed !important; top: calc(45px + env(safe-area-inset-top)) !important; left: 50% !important; right: auto !important; transform: translateX(-50%); width: 80% !important; max-width: 300px !important; max-height: 60vh !important; border-radius: 18px !important; overflow-y: auto !important; display: none !important; z-index: 20005 !important; background: rgba(15, 23, 42, 0.98) !important; border: 1px solid rgba(255, 255, 255, 0.15) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important; backdrop-filter: blur(20px) !important; }
   #notifDropdown.notification-dropdown.show { display: flex !important; }
   #notifDropdown .dropdown-header { background: rgba(255, 255, 255, 0.03) !important; color: #94a3b8 !important; border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important; }
   #notifDropdown .notif-item { color: #f8fafc !important; border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important; }
@@ -1425,7 +1292,14 @@ html[data-theme="light"] .menu-pill{
 [data-theme="light"] .pill.paid{ background:#dcfce7; border-color:#86efac; color:#166534; }
 [data-theme="light"] .pill.defaulted{ background:#f1f5f9; border-color:#cbd5e1; color:#334155; }
 
+@keyframes springBounceDesktop { 0% { opacity: 0; transform: scale(0.5) translateY(-20px); } 40% { opacity: 1; transform: scale(1.05) translateY(5px); } 70% { transform: scale(0.95) translateY(-2px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes springBounceMobile { 0% { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(-30px); } 40% { opacity: 1; transform: translateX(-50%) scale(1.05) translateY(5px); } 70% { transform: translateX(-50%) scale(0.95) translateY(-2px); } 100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); } }
 
+#notifDropdown.notification-dropdown.show { display: flex !important; transform-origin: top right; will-change: transform, opacity; animation: springBounceDesktop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+@media (max-width: 768px) {
+  #notifDropdown.notification-dropdown.show { transform-origin: top center; will-change: transform, opacity; animation: springBounceMobile 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important; }
+}
 
 .profile-tab-content { display: none; animation: fadeIn 0.3s ease; }
 .profile-tab-content.active { display: block; }
@@ -1457,301 +1331,39 @@ html[data-theme="light"] .menu-pill{
 [data-theme="light"] .splash-loader { background: rgba(226, 232, 240, 0.8); border: 1px solid rgba(0, 0, 0, 0.05); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05); }
 .splash-hidden { opacity: 0 !important; transform: scale(1.05) !important; pointer-events: none; }
 
-/* --- 1. PREMIUM MOBILE LOAN CARDS (ZOOMED OUT) --- */
+
+
+/* =========================================
+   12.1 | WIDER MOBILE CARDS
+   ========================================= */
 @media (max-width: 768px) {
-  #loanHistoryBody tr {
-    display: flex !important;
-    flex-direction: column !important;
-    background: var(--glass-bg) !important;
-    border: 1px solid var(--divider) !important;
-    border-radius: 16px !important;
-    padding: 12px !important;
-    margin-bottom: 12px !important;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25) !important;
-    position: relative;
+  .app-shell {
+    max-width: 100% !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
   }
 
-  #loanHistoryBody td {
-    display: block !important;
+  .card,
+  .loan-main-surface {
     width: 100% !important;
-    padding: 0 !important;
-    border: none !important;
-    background: transparent !important;
-  }
-
-  /* Compact Label style (Left side) */
-  #loanHistoryBody .lh-label {
-    font-weight: 700;
-    color: var(--text-muted);
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    text-align: left !important;
-  }
-
-  /* Compact Value style (Right side) */
-  #loanHistoryBody .lh-value {
-    font-weight: 600;
-    color: var(--text-main);
-    font-size: 0.8rem;
-    text-align: right !important;
-    max-width: 65%;
-    word-break: break-word;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
   }
 }
 
-/* --- 2. MINIMALIST GHOST SCROLLBAR (NO SHADOWS) --- */
-/* Removes the "strip" shadow by making the track completely transparent */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent !important;
-  margin: 10px 0;
-  box-shadow: none !important;
-}
-
-/* The Ghost Thumb: Blends in until hovered or active */
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2) !important;
-  border-radius: 100px;
-  box-shadow: none !important;
-  transition: background 0.3s ease;
-}
-
-::-webkit-scrollbar-thumb:hover,
-::-webkit-scrollbar-thumb:active {
-  background: var(--primary) !important;
-}
-
-/* Specific fix for containers to remove shadowy gutters */
-.sidebar-content-scroll, .modal, .table-wrapper, #loanHistoryModal .modal-body {
-    scrollbar-width: thin; /* Firefox Support */
-    scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
-    -webkit-overflow-scrolling: touch;
-}
-
-/* --- 3. PREMIUM FLOATING DRAG HANDLE (SCROLLER ICON) --- */
-/* Injects the iOS-style pill at the top of bottom-sheet modals */
-.modal-bottom-sheet .modal {
-  position: relative;
-  padding-top: 28px !important; /* Space for the handle */
-}
-
-.modal-bottom-sheet .modal::before {
-  content: '';
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 4px;
-  background: rgba(148, 163, 184, 0.35);
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-  pointer-events: none;
-  z-index: 10;
-}
-
-/* Prevent background scroll when sidebar is open */
-body.sidebar-open { overflow: hidden; }
-
-
-
-/* ============================================================================
-   BOOT LOADER OVERLAY (Admin)
-   - Prevents flashing 0s / placeholder names while RTDB loads
-   ============================================================================ */
-#loadingOverlay.stallz-loading-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 99998;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(2, 6, 23, 0.66);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: opacity 0.3s ease, visibility 0.3s ease;
-}
-
-#loadingOverlay.stallz-loading-overlay.hide {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-#loadingOverlay .stallz-loading-card {
-  width: min(420px, 92vw);
-  border-radius: 22px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(15, 23, 42, 0.78);
-  box-shadow: 0 22px 60px rgba(0,0,0,0.45);
-  padding: 18px 18px 16px 18px;
-  text-align: center;
-}
-
-[data-theme="light"] #loadingOverlay .stallz-loading-card {
-  background: rgba(255,255,255,0.92);
-  border-color: rgba(2,6,23,0.10);
-  box-shadow: 0 18px 55px rgba(2,6,23,0.18);
-}
-
-#loadingOverlay .stallz-loading-spinner {
-  width: 54px;
-  height: 54px;
-  border-radius: 999px;
-  border: 5px solid rgba(255,255,255,0.16);
-  border-top-color: rgba(34,197,94,0.95);
-  margin: 4px auto 12px auto;
-  animation: stallzSpin 0.9s linear infinite;
-}
-
-[data-theme="light"] #loadingOverlay .stallz-loading-spinner {
-  border-color: rgba(2,6,23,0.12);
-  border-top-color: rgba(22,163,74,0.95);
-}
-
-@keyframes stallzSpin { to { transform: rotate(360deg); } }
-
-#loadingOverlay .stallz-loading-title {
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  font-size: 1.05rem;
-  color: rgba(248,250,252,0.95);
-  margin-bottom: 6px;
-}
-
-[data-theme="light"] #loadingOverlay .stallz-loading-title {
-  color: rgba(2,6,23,0.92);
-}
-
-#loadingOverlay .stallz-loading-msg {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: rgba(148,163,184,0.95);
-}
-
-[data-theme="light"] #loadingOverlay .stallz-loading-msg {
-  color: rgba(71,85,105,0.95);
-}
-
-
-/* ============================================================================
-   NIGHT MODE POLISH (Admin) — Sidebar + Sketch Tabs + Notifications
-   - Dark mode is the default (no data-theme attribute).
-   - Light mode uses [data-theme="light"].
-   ============================================================================ */
-
-/* --- Sidebar: make night mode actually apply (no bright "day glass") --- */
-html:not([data-theme="light"]) .sidebar {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(22, 163, 74, 0.14) 100%) !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.07) !important;
-  box-shadow: -14px 0 55px rgba(0,0,0,0.55) !important;
-}
-
-html:not([data-theme="light"]) .close-btn {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  color: rgba(248, 250, 252, 0.85) !important;
-}
-
-html:not([data-theme="light"]) .close-btn:hover {
-  background: rgba(239, 68, 68, 0.14) !important;
-  border-color: rgba(239, 68, 68, 0.22) !important;
-  color: rgba(254, 226, 226, 0.95) !important;
-}
-
-html:not([data-theme="light"]) .profile-badge {
-  background: rgba(74, 222, 128, 0.12) !important;
-  color: rgba(74, 222, 128, 0.95) !important;
-  border: 1px solid rgba(74, 222, 128, 0.18) !important;
-}
-
-html:not([data-theme="light"]) .menu-item:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(74, 222, 128, 0.28) !important;
-  box-shadow: 0 10px 26px rgba(0,0,0,0.40) !important;
-}
-
-/* --- Sketch Tabs: keep day mode unchanged, but redesign dark to be uniform --- */
-html:not([data-theme="light"]) .sketch-tabs {
-  width: 99% !important;
-  max-width: 380px !important;
-  margin: 0.55rem auto !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.10) !important;
-  padding: 8px !important;
-  gap: 10px !important;
-  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.35) !important;
-}
-
-html:not([data-theme="light"]) .sketch-btn {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: rgba(148, 163, 184, 0.95) !important;
-  box-shadow: none !important;
-  text-transform: uppercase !important;
-  min-height: 40px !important;
-}
-
-html:not([data-theme="light"]) .sketch-btn.active {
-  background: linear-gradient(180deg, rgba(34, 197, 94, 0.24) 0%, rgba(34, 197, 94, 0.12) 100%) !important;
-  border-color: rgba(74, 222, 128, 0.32) !important;
-  color: rgba(248, 250, 252, 0.95) !important;
-  box-shadow: 0 12px 30px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08) !important;
-}
-
-html:not([data-theme="light"]) .sketch-btn:not(.active):hover {
-  transform: translateY(-1px) !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
-}
-
-/* --- Notification dropdown: ensure mobile fixed dropdown animates smoothly too --- */
 @media (max-width: 520px) {
-  #notifDropdown.notification-dropdown {
-    display: flex !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    /* Adjusted for centered mobile layout */
-    transform: translateX(-50%) scale(0.95) translateY(20px) !important;
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease, visibility 0s linear 0.3s !important;
+  .app-shell {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
   }
-  #notifDropdown.notification-dropdown.show {
-    opacity: 1 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-    transform: translateX(-50%) scale(1) translateY(0) !important;
-    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease, visibility 0s !important;
+
+  .card,
+  .loan-main-surface {
+    border-radius: 18px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
   }
-}
-
-/* --- Ultra-small phones: reduce chunkiness without changing theme colors --- */
-@media (max-width: 360px) {
-  html { font-size: 15px; }
-
-  .stats-grid { grid-template-columns: 1fr !important; }
-  .stats-grid .stat-card { padding: 14px 12px !important; }
-
-  .sketch-tabs { width: 100% !important; max-width: none !important; }
-  .sketch-btn { font-size: 0.78rem !important; padding: 9px 0 !important; min-height: 38px !important; }
-
-  .card { padding: 14px !important; }
-  .modal, .modal-glass { max-width: 96vw !important; }
-  .sidebar { width: 92% !important; }
-}
-
-
-.menu-pill.on{
-  border-color: rgba(34,197,94,0.35);
-  background: rgba(34,197,94,0.14);
-  color: #22c55e;
-}
-html:not([data-theme="light"]) .menu-pill.on{
-  color: #86efac;
 }

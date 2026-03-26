@@ -93,7 +93,7 @@ const state = {
   user: null,
   isLoggedIn: false,
   currentUserProfile: null,
-  loanHistoryFilter: "ALL",
+  loanHistoryFilter: "PAST",
   loanHistorySearch: ""
 };
 
@@ -108,7 +108,7 @@ let wizardDraft = {};
 let activeFilters = { status: 'ACTIVE', plan: 'All' };
 
 // Action Modal State
-const ACTION = { NONE: "NONE", PAY: "PAY", NOTE: "NOTE", WRITEOFF: "WRITEOFF", TOPUP: "TOPUP" };
+const ACTION = { NONE: "NONE", PAY: "PAY", NOTE: "NOTE", WRITEOFF: "WRITEOFF" };
 let currentAction = ACTION.NONE;
 let currentLoanId = null;
 
@@ -171,23 +171,10 @@ document.getElementById('adminDialogConfirmBtn')?.addEventListener('click', () =
 
 function el(id) { return document.getElementById(id); }
 
-function setBootLoaderMessage(msg) {
-  const m = document.getElementById("loadingMsg");
-  if (m && msg) m.textContent = String(msg);
-}
-
-function hideBootLoader() {
-  const loader = el("loadingOverlay");
-  if (!loader) return;
-  if (loader.dataset.hidden === "1") return;
-  loader.dataset.hidden = "1";
-  loader.classList.add("hide");
-  setTimeout(() => { try { loader.style.display = "none"; } catch(e) {} }, 350);
-}
-
 window.forceHideLoader = function() {
+  const loader = el("loadingOverlay");
   try { const em = localStorage.getItem("stallz_last_email"); if (em && el("loginEmail") && !el("loginEmail").value) el("loginEmail").value = em; } catch(e) {}
-  hideBootLoader();
+  if (loader) loader.style.display = "none";
 }
 
 function formatMoney(amount) {
@@ -331,57 +318,29 @@ function animateValue(obj, start, end, duration) {
   window.requestAnimationFrame(step);
 }
 
-window.toggleAdminTheme = function() {
-    // Standard Android haptic tap (Note: iOS completely blocks web vibrations)
-    try {
-        if (navigator.vibrate) navigator.vibrate(50);
-    } catch(err) {}
-
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    const newTheme = isLight ? 'dark' : 'light';
-
-    if (newTheme === 'light') {
-        document.documentElement.setAttribute("data-theme", "light");
-    } else {
-        document.documentElement.removeAttribute("data-theme");
-    }
-
-    localStorage.setItem('stallz_theme_preference', newTheme);
-    syncAdminThemeUI(newTheme === 'light');
-};
-function syncAdminThemeUI(isLight) {
-    const themeToggle = document.getElementById('themeToggleState');
-    const themeKnob = document.getElementById('themeToggleKnob');
-
-    if (themeToggle && themeKnob) {
-        if (isLight) {
-            themeToggle.style.background = 'rgba(148, 163, 184, 0.4)'; // Gray for light mode
-            themeKnob.style.transform = 'translateX(0px)';
-        } else {
-            themeToggle.style.background = 'var(--primary)'; // Colored for dark mode
-            themeKnob.style.transform = 'translateX(20px)';
-        }
-    }
-}
-
 function checkTimeBasedTheme() {
+  const toggle = document.getElementById("themeToggle");
   const stored = localStorage.getItem("stallz_theme_preference");
-  let isLight = false;
 
   if (stored) {
-    isLight = (stored === "light");
-  } else {
-    const hour = new Date().getHours();
-    isLight = (hour >= 6 && hour < 18);
+    if (stored === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+      if (toggle) toggle.checked = false;
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+      if (toggle) toggle.checked = true;
+    }
+    return;
   }
-
-  if (isLight) {
+  const hour = new Date().getHours();
+  const isDayTime = hour >= 6 && hour < 18;
+  if (isDayTime) {
     document.documentElement.setAttribute("data-theme", "light");
+    if (toggle) toggle.checked = false;
   } else {
     document.documentElement.removeAttribute("data-theme");
+    if (toggle) toggle.checked = true;
   }
-
-  syncAdminThemeUI(isLight);
 }
 
 let __lastActivityWrite = 0;
@@ -405,9 +364,8 @@ function computeDerivedFields(loan, today) {
     today.setHours(0, 0, 0, 0);
   }
 
-  // 1. Robust Rate Calculation (Prevents empty string 0% bug)
   let rate = INTEREST_BY_PLAN[loan.plan] || 0;
-  if (loan.customInterest !== undefined && loan.customInterest !== null && loan.customInterest !== "") {
+  if (loan.customInterest !== undefined && loan.customInterest !== null) {
     rate = Number(loan.customInterest) / 100;
   }
 
@@ -428,31 +386,14 @@ function computeDerivedFields(loan, today) {
     }
   }
 
-  // 2. Core Financials
-  const amount = Number(loan.amount || 0);
-  const totalDue = Number((amount * (1 + rate)).toFixed(2));
-  const expectedProfit = totalDue - amount;
-
+  const totalDue = Number(((loan.amount || 0) * (1 + rate)).toFixed(2));
   const paid = Number(loan.paid || 0);
   const sale = Number(loan.saleAmount || 0);
   const totalIn = paid + sale;
   const balance = Number((totalDue - totalIn).toFixed(2));
 
-  // 3. ✅ Profit Accounting (Capped at expected profit)
-  if (totalDue > 0 && totalIn > 0) {
-      const profitRatio = expectedProfit / totalDue;
-      const rawProfit = totalIn * profitRatio;
-      loan.profitCollected = Number(Math.min(expectedProfit, Math.max(0, rawProfit)).toFixed(2));
-  } else {
-      loan.profitCollected = 0;
-  }
+  loan.profitCollected = Math.max(0, totalIn - (loan.amount || 0));
 
-  // Override: If collateral is sold or marked as bad debt, use principal-first recovery (still cap)
-  if (loan.status === "DEFAULTED" || sale > 0) {
-      loan.profitCollected = Number(Math.min(expectedProfit, Math.max(0, totalIn - amount)).toFixed(2));
-  }
-
-  // 4. Status Evaluation
   let status = "ACTIVE";
   if (balance <= 0.01) {
     status = "PAID";
@@ -466,17 +407,10 @@ function computeDerivedFields(loan, today) {
     ? Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
     : 0;
 
-
-  // 4b. Lock completion date (prevents late edits from destroying trust analytics)
-  if ((status === "PAID" || status === "DEFAULTED") && !loan.closedAt) {
-    loan.closedAt = new Date().toISOString();
-  }
-
-  // 5. Final Assignments
   loan.rate = rate;
   loan.dueDate = toDateOnly(dueDate);
   loan.totalDue = totalDue;
-  loan.balance = Number(balance.toFixed(2)); // Allow negative balances to reveal overpayments
+  loan.balance = balance;
   loan.status = status;
   loan.daysOverdue = daysOverdue;
 }
@@ -490,17 +424,11 @@ function recomputeAllLoans() {
 
 /* Fix ID Collision Risk */
 function generateLoanId() {
-    // Cloud-safe, collision-proof ID:
-    // Use Firebase push().key when online; fallback to timestamp when offline/test.
-    try {
-      if (!OFFLINE_TEST_MODE && typeof dataRef !== "undefined" && dataRef && dataRef.child) {
-        const k = dataRef.child("loans").push().key;
-        if (k) return k;
-      }
-    } catch(_) {}
-    return String(Date.now()) + "_" + Math.floor(Math.random() * 1000000);
+    // Timestamp + Random Number to prevent collisions
+    return Date.now() + Math.floor(Math.random() * 1000);
 }
 
+// FIX: Use Timestamp + Random to prevent collision if multiple admins save at exact same ms
 function generateRepaymentId() {
     return Date.now() + Math.floor(Math.random() * 100);
 }
@@ -515,26 +443,15 @@ function loadFromFirebase() {
   }
 
   setTimeout(() => {
-    if (state.dataLoaded) return;
-
     const loader = document.getElementById("loadingOverlay");
-    if (!loader || loader.style.display === "none") return;
-
-    const offline = (typeof window.isAppOffline === "function") ? window.isAppOffline() : (!navigator.onLine);
-
-    if (offline) {
-      console.warn("Offline detected during boot. Attempting cached admin data.");
-      setBootLoaderMessage("Offline detected — opening last saved data...");
-      try {
-        const cachedData = localStorage.getItem("stallz_admin_data_cache");
-        if (cachedData) applyData(JSON.parse(cachedData), true);
-      } catch (e) {}
-      setTimeout(hideBootLoader, 600);
-    } else {
-      // Slow RTDB loads should NOT be treated as offline.
-      setBootLoaderMessage("Syncing with database... (slow connection)");
+    if (loader && loader.style.display !== "none") {
+      console.warn("Database connection slow. Forcing UI open in offline/cached mode.");
+      loader.style.display = "none";
+      if (!state.dataLoaded) {
+        applyData({ loans: [], nextId: 1, admins: [] });
+      }
     }
-  }, 3500);
+  }, 3000);
 
   if (typeof OFFLINE_TEST_MODE !== "undefined" && OFFLINE_TEST_MODE) {
     setTimeout(() => {
@@ -568,20 +485,19 @@ function loadFromFirebase() {
     applyData(val);
   }, (error) => {
     console.error("Firebase read failed:", error);
-    // Force the UI to render empty and hide the bootloader to prevent hanging
-    applyData({});
-    setTimeout(hideBootLoader, 500);
-    if (typeof showToast === "function") {
-        showToast("Database Access Denied: Check Permissions", "error");
-    }
   });
 
-  // (Removed) Redundant DB poller: RTDB .on('value') already streams changes.
+  setInterval(() => {
+    if(document.visibilityState === 'visible') {
+        dataRef.get().then(s => applyData(s.val()||{})).catch(e=>{});
+    }
+  }, 60000);
 }
 
+function applyData(parsed) {
+  const loader = document.getElementById("loadingOverlay");
+  if (loader) loader.style.display = "none";
 
-function applyData(parsed, isFromCache = false) {
-  // Mark loaded (cache or live). Boot overlay is dismissed after first real render.
   state.dataLoaded = true;
 
   // Track the current RTDB container shape for loans (array vs object)
@@ -617,12 +533,17 @@ function applyData(parsed, isFromCache = false) {
     } else {
       existing.paths.push(l.__loanPath);
 
+      // Prefer "full" records over accidental thin duplicates
       const isThinLoan = (ln) => {
         if (!ln || typeof ln !== "object") return true;
         const has = (v) => v !== undefined && v !== null && v !== "";
         const hasCore = (
-          has(ln.amount) || has(ln.totalDue) || has(ln.totalPayable) ||
-          has(ln.plan) || has(ln.startDate) || has(ln.dueDate)
+          has(ln.amount) ||
+          has(ln.totalDue) ||
+          has(ln.totalPayable) ||
+          has(ln.plan) ||
+          has(ln.startDate) ||
+          has(ln.dueDate)
         );
         return !hasCore;
       };
@@ -678,28 +599,37 @@ function applyData(parsed, isFromCache = false) {
     return winner;
   });
 
-  state.loans.sort((a, b) => (Date.parse(b.createdAt || b.updatedAt || '') || 0) - (Date.parse(a.createdAt || a.updatedAt || '') || 0));
+  // Sort newest first (fallback 0 when id is missing)
+  state.loans.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
 
-  if (!isFromCache && !OFFLINE_TEST_MODE && dataRef) {
+  // =========================================================================
+  // 🧹 AUTO-FIX: Schedule cleanup of "Thin" duplicates if any exist
+  // =========================================================================
+  if (!OFFLINE_TEST_MODE && dataRef) {
       const pathsToDelete = {};
       let cleanupCount = 0;
 
       state.loans.forEach(l => {
           if (l.__loanPaths && l.__loanPaths.length > 1) {
+              // Keep the primary, delete the rest
               l.__loanPaths.forEach(path => {
                   if (path !== l.__primaryLoanPath) {
-                      pathsToDelete[path] = null;
+                      pathsToDelete[path] = null; // Prepare delete
                       cleanupCount++;
                   }
               });
+              // Reset local paths so we don't try to delete again
               l.__loanPaths = [l.__primaryLoanPath];
           }
       });
 
       if (cleanupCount > 0) {
+          console.log(`🧹 Cleaning up ${cleanupCount} duplicate loan records...`);
+          // Run quietly in background
           dataRef.update(pathsToDelete).catch(e => console.warn("Cleanup warning:", e));
       }
   }
+  // =========================================================================
 
   // 2. Parse Capital History
   if (parsed.capitalTxns && typeof parsed.capitalTxns === 'object') {
@@ -708,10 +638,12 @@ function applyData(parsed, isFromCache = false) {
       state.capitalTxns = parsed.capitalTxns || [];
   }
 
+  // Sort Capital by Newest Date First
   if (state.capitalTxns.length > 0) {
       state.capitalTxns.sort((a, b) => new Date(b.date) - new Date(a.date));
   }
 
+  // 🔴 FIXED: Parse Expenses cleanly here (No monkey-patching!)
   state.expenses = parsed.expenses ? Object.values(parsed.expenses).filter(e => e && typeof e === "object") : [];
 
   // 3. Load Other Data Variables
@@ -728,7 +660,7 @@ function applyData(parsed, isFromCache = false) {
   } else {
       state.repayments = (parsed.repayments || []).filter?.(r => r && typeof r === "object") || (parsed.repayments || []);
   }
-
+  // Sort newest first
   if (state.repayments.length > 1) {
       state.repayments.sort((a, b) => Date.parse(b.createdAt || b.date || "") - Date.parse(a.createdAt || a.date || ""));
   }
@@ -742,12 +674,6 @@ function applyData(parsed, isFromCache = false) {
     refreshUI();
     updateWelcomeUI();
 
-    // Dismiss boot overlay only after the UI has real data (prevents flashing 0s / wrong names)
-    if (!state.__bootOverlayDismissed) {
-      state.__bootOverlayDismissed = true;
-      try { hideBootLoader(); } catch(e) {}
-    }
-
     if (state.loans && state.loans.length > 0) {
         const force = !state.__initialClientSyncDone;
         distributeLoansToClients(state.loans, force);
@@ -760,30 +686,7 @@ function applyData(parsed, isFromCache = false) {
   } catch (e) {
     console.error("Render error:", e);
   }
-
-  // =========================================================================
-  // 🚀 HIDE SKELETON LOADER NOW THAT DATA IS RENDERED!
-  // =========================================================================
-  const gate = document.getElementById("authGate");
-  if (gate && gate.style.display !== "none") {
-      gate.style.opacity = "0";
-      setTimeout(() => gate.style.display = "none", 300);
-  }
-
-  // =========================================================================
-  // 🚀 SAVE SNAPSHOT FOR INSTANT RELOADS (STALE-WHILE-REVALIDATE)
-  // =========================================================================
-  if (!isFromCache && !OFFLINE_TEST_MODE && parsed) {
-      try {
-          if (parsed.loans || parsed.capitalTxns || parsed.admins) {
-              localStorage.setItem("stallz_admin_data_cache", JSON.stringify(parsed));
-          }
-      } catch(e) {
-          console.warn("Failed to save local cache for fast loading.", e);
-      }
-  }
 }
-
 async function initializeMissingNodes() {
   if (OFFLINE_TEST_MODE || !dataRef) return;
   try {
@@ -876,10 +779,9 @@ async function sendCustomAlertToClient(clientUid, title, message) {
             type: "CUSTOM_ALERT"
         };
 
-        // 1) In-app notification (bell UI)
+        // THE FIX: Save it inside the authorized 'clients' node!
         await firebase.database().ref(`clients/${clientUid}/notifications/${notifId}`).set(payload);
-
-        showToast("Alert sent!", "success");
+        showToast("Alert sent to client's device!", "success");
 
     } catch (error) {
         console.error("Failed to send alert:", error);
@@ -888,10 +790,14 @@ async function sendCustomAlertToClient(clientUid, title, message) {
 }
 
 async function ensureAdminAccess() {
+  const gate = document.getElementById("authGate");
+  if (gate) gate.style.display = "flex";
+
   if (typeof OFFLINE_TEST_MODE !== 'undefined' && OFFLINE_TEST_MODE) {
     state.user = { email: "offline@stallz.local", uid: "offline-admin" };
     state.isLoggedIn = true;
     state.currentUserProfile = { name: "OFFLINE ADMIN", role: "TESTER" };
+    if (gate) gate.style.display = "none";
     loadFromFirebase();
     updateWelcomeUI();
     return true;
@@ -904,39 +810,50 @@ async function ensureAdminAccess() {
       return false;
     }
 
+    // NEW: Explicitly fetch and wait for profile BEFORE clearing the loading gate
+    // This ensures "Hi, Admin" doesn't flicker before the real name appears
     let foundProfile = null;
     try {
       const rootSnap = await firebase.database().ref(`admins/${user.uid}`).get();
-      if (rootSnap.exists()) foundProfile = rootSnap.val();
-    } catch(e) {}
+      if (rootSnap.exists()) {
+        foundProfile = rootSnap.val();
+      }
+    } catch(e) {
+      console.log("Root admin check failed, trying database list...");
+    }
 
     if (!foundProfile) {
         const snap = await dataRef.child("admins").get();
         const adminsList = snap.val() || [];
         const listArray = Array.isArray(adminsList) ? adminsList : Object.values(adminsList);
-        foundProfile = listArray.find(admin => admin.email && admin.email.toLowerCase() === user.email.toLowerCase());
+        foundProfile = listArray.find(admin =>
+          admin.email && admin.email.toLowerCase() === user.email.toLowerCase()
+        );
     }
 
     if (!foundProfile) {
-      if (localStorage.getItem('stallz_offline_role') === 'admin') {
-           foundProfile = { name: localStorage.getItem('stallz_offline_name') || "Admin", role: "admin" };
-      } else {
-           await window.StallzAuth?.signOut?.();
-           window.location.replace("../index.html");
-           return false;
-      }
+      console.warn("User not authorized as Admin.");
+      await window.StallzAuth?.signOut?.();
+      window.location.replace("../index.html");
+      return false;
     }
 
+    // Set state and update UI immediately
     state.user = user;
     state.isLoggedIn = true;
     state.currentUserProfile = foundProfile;
     updateWelcomeUI();
 
+    if (gate) gate.style.display = "none";
+
     loadFromFirebase();
     return true;
 
   } catch(e) {
-    if (window.location.pathname.includes("admin.html")) window.location.replace("../index.html");
+    console.error("Auth Check Failed:", e);
+    if (window.location.pathname.includes("admin.html")) {
+        window.location.replace("../index.html");
+    }
     return false;
   }
 }
@@ -946,8 +863,7 @@ function updateWelcomeUI() {
 
   let profile = state.currentUserProfile;
 
-  // Attempt to find profile from admins array if we have the user email
-  if (!profile && state.admins && state.user && state.user.email) {
+  if (!profile && state.admins && state.user) {
      const email = state.user.email.toLowerCase();
      profile = state.admins.find(a => a.email && a.email.toLowerCase() === email);
   }
@@ -956,43 +872,30 @@ function updateWelcomeUI() {
   let fullName = "STALLZ ADMIN";
   let role = localStorage.getItem('stallz_offline_role') === 'admin' ? "OWNER" : "USER";
 
-  // 1. Restore the cached name if offline/missing
+  // 1. Restore the cached name if offline/missing (Stops the "Hi, Admin" glitch!)
   const cachedName = localStorage.getItem('stallz_offline_name');
-  if (cachedName && cachedName !== "undefined" && cachedName !== "null") {
+  if (cachedName) {
       fullName = cachedName.toUpperCase();
       firstName = fullName.split(' ')[0];
   }
 
   // 2. Overwrite with live Firebase data if available
-  let hasLiveProfile = false;
   if (profile && profile.name) {
     fullName = profile.name.toUpperCase();
     firstName = fullName.split(' ')[0];
-    hasLiveProfile = true;
   } else if (profile && profile.firstname) {
      firstName = profile.firstname.toUpperCase();
      fullName = (profile.firstname + " " + (profile.surname||"")).toUpperCase();
-     hasLiveProfile = true;
   } else if (state.user && state.user.displayName) {
      fullName = state.user.displayName.toUpperCase();
      firstName = fullName.split(' ')[0];
-     hasLiveProfile = true;
   } else if (state.user && state.user.email) {
-     // Only fallback to email if we don't have a better cache
-     if (!cachedName || cachedName.includes('@') || cachedName.toLowerCase() === state.user.email.split('@')[0].toLowerCase()) {
-         firstName = state.user.email.split('@')[0].toUpperCase();
-         fullName = firstName;
-     }
-  }
-
-  // 3. 🚀 THE FIX: Update the cache so the NEXT reload uses the real name instantly
-  if (hasLiveProfile) {
-      localStorage.setItem('stallz_offline_name', fullName);
+     firstName = state.user.email.split('@')[0].toUpperCase();
+     if (!cachedName) fullName = firstName;
   }
 
   if (profile && profile.role) {
       role = profile.role.toUpperCase();
-      localStorage.setItem('stallz_offline_role', role.toLowerCase());
   }
 
   // Update Header Name
@@ -1023,275 +926,64 @@ function updateWelcomeUI() {
  * 7.0 | UI RENDERING (DASHBOARD & TABLES)
  * ============================================================================ */
 
-let __linkOrphansState = { lastLoansCount: 0, lastUsersCount: 0, lastRunAt: 0 };
+let __hasAutoLinked = false;
 
-function injectPremiumCardCSS() {
-  if (document.getElementById("stallzPremiumAdminLoanCardStyle")) return;
-  const style = document.createElement("style");
-  style.id = "stallzPremiumAdminLoanCardStyle";
-  style.innerHTML = `
-      /* Hide standard table headers since we are using card views now */
-      #loansTable thead, #loanHistoryTable thead { display: none !important; }
+function linkOrphanedLoans() {
+  if (__hasAutoLinked || !state.loans || !window.StallzShared) return;
 
-      /* REMOVED: opacity: 0; and animation: fadeInCard; to stop the blinking on sync */
-      .p-loan-card { background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(2, 6, 23, 0.98)); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 24px; padding: 24px; margin-bottom: 20px; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6); position: relative; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; width: 100%; box-sizing: border-box; }
-      .p-loan-card:hover { transform: translateY(-3px); box-shadow: 0 25px 55px rgba(0, 0, 0, 0.75); }
-      .p-loan-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px; background: linear-gradient(90deg, var(--primary, #4ade80), #22c55e); box-shadow: 0 2px 10px rgba(74,222,128,0.5); }
-      .p-loan-card.is-overdue::before { background: linear-gradient(90deg, #f87171, #ef4444); box-shadow: 0 2px 10px rgba(239,68,68,0.5); }
-      .p-loan-card.is-paid::before { background: linear-gradient(90deg, #3b82f6, #2563eb); box-shadow: 0 2px 10px rgba(59,130,246,0.5); }
-      .p-loan-card.is-defaulted::before { background: linear-gradient(90deg, #64748b, #475569); filter: grayscale(100%); }
-      .p-loan-badge { padding: 6px 14px; border-radius: 12px; font-size: 0.75rem; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; }
-      .p-loan-badge.active { background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
-      .p-loan-badge.overdue { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); }
-      .p-loan-badge.paid { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
-      .p-loan-badge.defaulted { background: rgba(100, 116, 139, 0.2); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.4); }
-      .p-loan-balance-label { font-size: 0.85rem; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-      .p-loan-balance-val { font-size: 2.08rem; font-weight: 900; color: #ffffff; letter-spacing: -1px; display: flex; align-items: baseline; gap: 4px; line-height: 1.1; margin-bottom: 8px; text-shadow: 0 4px 15px rgba(0,0,0,0.6); }
-      .p-loan-balance-val small { font-size: 1.4rem; color: rgba(255,255,255,0.6); font-weight: 800; }
-      .p-loan-total { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 26px; font-weight: 600; line-height: 1.6; }
-      .p-loan-total-sub { font-size: 0.75rem; font-weight: 700; color: var(--primary, #4ade80); }
-      .p-loan-progress-wrap { margin-bottom: 24px; }
-      .p-loan-progress-labels { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 10px; font-weight: 800; color: rgba(255,255,255,0.9); }
-      .p-loan-progress-track { height: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; box-shadow: inset 0 4px 8px rgba(0,0,0,0.5); }
-      .p-loan-progress-fill { height: 100%; border-radius: 12px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
-      .p-loan-progress-fill.active { background: linear-gradient(90deg, #4ade80, #22c55e); box-shadow: 0 0 15px rgba(74,222,128,0.6); }
-      .p-loan-progress-fill.overdue { background: linear-gradient(90deg, #f87171, #ef4444); box-shadow: 0 0 15px rgba(239,68,68,0.6); }
-      .p-loan-progress-fill.paid { background: linear-gradient(90deg, #3b82f6, #2563eb); box-shadow: 0 0 15px rgba(59,130,246,0.6); }
-      .p-loan-progress-fill.defaulted { background: linear-gradient(90deg, #64748b, #475569); }
-      .p-loan-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 18px; margin-bottom: 15px; }
-      .p-loan-meta { display: flex; flex-direction: column; gap: 5px; }
-      .p-loan-meta-label { font-size: 0.75rem; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 800; }
-      .p-loan-meta-val { font-size: 1.05rem; color: rgba(255,255,255,0.95); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 145px; text-shadow: 0 2px 5px rgba(0,0,0,0.4); }
-
-      /* Professional SVG Action Buttons CSS */
-      .p-action-btn { display:flex; align-items:center; justify-content:center; gap:6px; padding:12px; border-radius:12px; font-size:0.85rem; font-weight:800; cursor:pointer; transition: transform 0.1s, box-shadow 0.2s; border:none; outline:none; font-family: inherit; }
-      .p-action-btn:active { transform: scale(0.96); }
-      .p-action-btn svg { flex-shrink: 0; }
-
-      /* Auto-Adapt for Admin Light Mode */
-      [data-theme="light"] .p-loan-card { background: #ffffff; border: 1px solid rgba(0,0,0,0.1); box-shadow: 0 16px 45px rgba(0,0,0,0.05); }
-      [data-theme="light"] .p-loan-balance-label { color: #64748b; }
-      [data-theme="light"] .p-loan-balance-val { color: #0f172a; text-shadow: none; }
-      [data-theme="light"] .p-loan-balance-val small { color: #94a3b8; }
-      [data-theme="light"] .p-loan-total { color: #64748b; }
-      [data-theme="light"] .p-loan-total-sub { color: #16a34a; }
-      [data-theme="light"] .p-loan-progress-labels { color: #334155; }
-      [data-theme="light"] .p-loan-progress-track { background: #f1f5f9; box-shadow: inset 0 1px 3px rgba(0,0,0,0.04); }
-      [data-theme="light"] .p-loan-footer { border-top: 1px solid rgba(0,0,0,0.06); }
-      [data-theme="light"] .p-loan-meta-label { color: #94a3b8; }
-      [data-theme="light"] .p-loan-meta-val { color: #1e293b; text-shadow: none; }
-  `;
-  document.head.appendChild(style);
-}
-
-function getPremiumLoanCardHTML(l, index = 0) {
-    const status = String(l.status || "ACTIVE").toUpperCase();
-    const statusClass = status === "PAID" ? "paid" : (status === "OVERDUE" ? "overdue" : (status === "DEFAULTED" ? "defaulted" : "active"));
-    const hasNotes = !!l.notes;
-
-    const total = Number(l.totalDue || 0);
-    const paid = Number(l.paid || 0);
-    const balance = Number(l.balance || 0);
-    const percent = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
-
-    let interestRate = (l.customInterest !== undefined && l.customInterest !== null) ? l.customInterest : (l.rate ? (l.rate * 100) : 0);
-    let interestDisplay = interestRate > 0 ? `${interestRate}%` : "N/A";
-    let planDisplay = l.plan || "Standard";
-
-    const updated = _fmtDateShort(l.updatedAt || l.paidAt || l.startDate);
-    const clientNameDisplay = l.clientName || "Unknown Client";
-
-    const waNumber = formatWhatsApp(l.clientPhone);
-    const waMsg = encodeURIComponent(`Hi ${clientNameDisplay}, reminder: Balance of ${formatMoney(l.balance)} was due on ${formatDate(l.dueDate)}.`);
-    const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waMsg}` : "#";
-
-    const isClosed = status === "PAID" || status === "DEFAULTED";
-
-    // Generate Initials
-    let init1 = "", init2 = "";
-    if (clientNameDisplay) {
-        const parts = clientNameDisplay.trim().split(" ");
-        init1 = parts[0] ? parts[0].charAt(0).toUpperCase() : "";
-        init2 = parts.length > 1 ? parts[parts.length - 1].charAt(0).toUpperCase() : "";
-    }
-    const initials = init1 + init2;
-
-    // Smart Footer Buttons (Hide irrelevant actions on paid loans)
-    let actionButtonsHtml = '';
-    if (isClosed) {
-        actionButtonsHtml = `
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top: 15px;">
-              <button onclick="openActionModal('NOTE', '${l.id}')" class="p-action-btn" style="border:1px solid ${hasNotes ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255,255,255,0.15)'}; background:${hasNotes ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}; color:${hasNotes ? '#60a5fa' : 'var(--text-main)'};">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                ${hasNotes ? 'Notes Log' : '+ Add Note'}
-              </button>
-              <button onclick="openReceipt('${l.id}')" class="p-action-btn" style="border:1px solid rgba(255,255,255,0.15); background:transparent; color:var(--text-main);" title="Print Receipt">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                Receipt
-              </button>
-          </div>
-        `;
-    } else {
-        actionButtonsHtml = `
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top: 15px;">
-              <button onclick="openActionModal('PAY', '${l.id}')" class="p-action-btn" style="grid-column: span 2; background:var(--primary); color:#000; box-shadow: 0 4px 10px rgba(74, 222, 128, 0.2);">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
-                Record Payment
-              </button>
-              <button onclick="openActionModal('TOPUP', '${l.id}')" class="p-action-btn" style="background:rgba(168, 85, 247, 0.15); color:#c084fc; border:1px solid rgba(168, 85, 247, 0.4);">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                Top-Up
-              </button>
-              <button onclick="openActionModal('NOTE', '${l.id}')" class="p-action-btn" style="border:1px solid ${hasNotes ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255,255,255,0.15)'}; background:${hasNotes ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}; color:${hasNotes ? '#60a5fa' : 'var(--text-main)'};">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                ${hasNotes ? 'Notes' : 'Note'}
-              </button>
-              <button onclick="openActionModal('WRITEOFF', '${l.id}')" class="p-action-btn" style="border:1px solid rgba(239, 68, 68, 0.3); background:rgba(239, 68, 68, 0.1); color:#ef4444;">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                Bad Debt
-              </button>
-              <button onclick="openReceipt('${l.id}')" class="p-action-btn" style="border:1px solid rgba(255,255,255,0.15); background:transparent; color:var(--text-main);">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                Receipt
-              </button>
-          </div>
-          <div style="margin-top: 10px;">
-              <a href="${waLink}" target="_blank" rel="noopener noreferrer" class="p-action-btn" style="width: 100%; border:1px solid rgba(74, 222, 128, 0.3); background:rgba(74, 222, 128, 0.1); color:#4ade80; text-decoration:none;">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                Send WhatsApp Reminder
-              </a>
-          </div>
-        `;
-    }
-
-    return `
-      <div class="p-loan-card ${statusClass === 'overdue' ? 'is-overdue' : (statusClass === 'paid' ? 'is-paid' : (statusClass === 'defaulted' ? 'is-defaulted' : ''))}" style="animation-delay: ${index * 0.05}s">
-
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
-              <div style="display:flex; align-items:center; gap:6px; font-family:monospace; font-size:0.85rem; color:var(--text-muted); font-weight:700;">
-                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
-                  ID: ${l.id}
-              </div>
-              <div class="p-loan-badge ${statusClass}">${status === 'DEFAULTED' ? 'CLOSED' : status}</div>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
-              <div style="font-size:1.3rem; font-weight: 900; color:var(--text-main); line-height:1.2; word-break: break-word; padding-right: 15px;">
-                  ${escapeHTML(clientNameDisplay)}
-              </div>
-              <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: #000; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; box-shadow: 0 4px 10px rgba(0,0,0,0.2); flex-shrink: 0; letter-spacing: 1px;">
-                  ${initials}
-              </div>
-          </div>
-
-          <div style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:var(--text-muted); font-family:monospace; margin-bottom: 24px;">
-              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-              ${escapeHTML(l.clientPhone || 'No Phone Number')}
-          </div>
-
-          <div style="margin-bottom: 12px;">
-              <div class="p-loan-balance-label" style="margin-bottom: 2px;">Remaining Balance</div>
-              <div class="p-loan-balance-val" style="margin-bottom: 0;"><small>K</small>${balance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-          </div>
-
-          <div class="p-loan-total" style="margin-bottom: 24px;">
-              Principal: K${Number(l.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} &nbsp;•&nbsp; Total Due: K${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}<br>
-              <span class="p-loan-total-sub"> Interest: ${interestDisplay} &nbsp;•&nbsp; Duration: ${escapeHTML(planDisplay)}</span>
-          </div>
-
-          <div class="p-loan-progress-wrap">
-              <div class="p-loan-progress-labels">
-                  <span>Paid: K${paid.toLocaleString()}</span>
-                  <span>${percent}%</span>
-              </div>
-              <div class="p-loan-progress-track">
-                  <div class="p-loan-progress-fill ${statusClass}" style="width: ${percent}%;"></div>
-              </div>
-          </div>
-
-          <div class="p-loan-footer">
-              <div class="p-loan-meta">
-                  <span class="p-loan-meta-label">Collateral</span>
-                  <span class="p-loan-meta-val" style="color: var(--primary);">${escapeHTML(l.collateralItem || 'Personal')}</span>
-              </div>
-
-              <div class="p-loan-meta" style="text-align: right;">
-                  <span class="p-loan-meta-label">Due Date</span>
-                  <span class="p-loan-meta-val" style="${status === 'OVERDUE' ? 'color:#ef4444;' : ''}">${formatDate(l.dueDate)}</span>
-              </div>
-          </div>
-
-          ${actionButtonsHtml}
-
-      </div>
-    `;
-}
-
-function linkOrphanedLoans(force = false) {
-  if (!state.loans || !window.StallzShared) return;
-
-  const users = window.StallzShared.listUsers("client") || [];
-  if (users.length === 0) return;
-
-  const now = Date.now();
-  const loansCount = (state.loans || []).length;
-  const usersCount = users.length;
-
-  // Only run when something meaningful changed (or forced), and throttle runs.
-  if (!force) {
-    if (now - __linkOrphansState.lastRunAt < 30000) return; // 30s throttle
-    if (loansCount <= __linkOrphansState.lastLoansCount && usersCount <= __linkOrphansState.lastUsersCount) return;
-  }
-
-  __linkOrphansState.lastRunAt = now;
-  __linkOrphansState.lastLoansCount = loansCount;
-  __linkOrphansState.lastUsersCount = usersCount;
-
-  // Build a phone->uid map once (O(N)) to avoid O(N*M)
-  const phoneToUid = new Map();
-  users.forEach(u => {
-    if (!u || !u.uid || !u.phone) return;
-    const clean = String(u.phone).replace(/\D/g, "").replace(/^0/, "260");
-    if (clean.length > 9) phoneToUid.set(clean, u.uid);
-  });
+  const users = window.StallzShared.listUsers("client");
+  if (!users || users.length === 0) return;
 
   const updates = {};
   let count = 0;
 
-  // Only scan orphaned loans
-  const orphans = (state.loans || []).filter(l => l && !l.clientUid && l.clientPhone);
-  if (orphans.length === 0) return;
+  state.loans.forEach(l => {
+    if (!l.clientUid && l.clientPhone) {
+      const cleanLoanPhone = String(l.clientPhone).replace(/\D/g, "").replace(/^0/, "260");
 
-  orphans.forEach(l => {
-    const cleanLoanPhone = String(l.clientPhone).replace(/\D/g, "").replace(/^0/, "260");
-    const uid = phoneToUid.get(cleanLoanPhone);
+      const match = users.find(u => {
+          const cleanUserPhone = String(u.phone).replace(/\D/g, "").replace(/^0/, "260");
+          return cleanUserPhone === cleanLoanPhone && cleanUserPhone.length > 9;
+      });
 
-    if (uid) {
-      console.warn(`⚠️ SECURITY: Auto-linking Loan #${l.id} (${l.clientName}) to User UID: ${uid}`);
+      if (match && match.uid) {
+        // SECURITY LOG:
+        console.warn(`⚠️ SECURITY: Auto-linking Loan #${l.id} (${l.clientName}) to User UID: ${match.uid}`);
 
-      l.clientUid = uid;
+        l.clientUid = match.uid;
 
-      const __paths = (Array.isArray(l.__loanPaths) && l.__loanPaths.length)
-        ? l.__loanPaths.slice()
-        : (l.__loanPath ? [l.__loanPath] : [`loans/${l.id}`]);
-      const __primary = l.__primaryLoanPath || l.__loanPath || __paths[0];
+        // ✅ FIX: write to the *real* RTDB key for this loan (array index vs object key)
+        const __paths = (Array.isArray(l.__loanPaths) && l.__loanPaths.length)
+          ? l.__loanPaths.slice()
+          : (l.__loanPath ? [l.__loanPath] : [`loans/${l.id}`]);
+        const __primary = l.__primaryLoanPath || l.__loanPath || __paths[0];
 
-      __paths.forEach(p => { if (p) updates[`${p}/clientUid`] = uid; });
-      updates[`${__primary}/updatedAt`] = new Date().toISOString();
+        // Update clientUid everywhere (so whichever copy is displayed later is linked)
+        __paths.forEach(p => { if (p) updates[`${p}/clientUid`] = match.uid; });
 
-      count++;
+        // Only bump updatedAt on the primary copy (prevents "thin" duplicates from winning)
+        updates[`${__primary}/updatedAt`] = new Date().toISOString();
+
+        count++;
+      }
     }
   });
 
   if (count > 0) {
     if (!OFFLINE_TEST_MODE && dataRef) {
-      dataRef.update(updates);
-      distributeLoansToClients(state.loans, true);
+       dataRef.update(updates);
+       // Force sync immediately to secure the data
+       distributeLoansToClients(state.loans, true);
     }
     showToast(`Linked ${count} loans to registered accounts`, "success");
   }
+
+  __hasAutoLinked = true;
 }
 
+/* refreshUI (Final Integration: Smart Notifs + Admin Profiles) */
+
+/* admin/app.js - REPLACE YOUR EXISTING refreshUI FUNCTION WITH THIS */
 
 function refreshUI() {
   try { linkOrphanedLoans(); } catch(e) {}
@@ -1332,18 +1024,11 @@ function refreshUI() {
     return true;
   });
 
-  const unreadCount = (sharedNotifs.length + overdueLoans.length);
-  if (bellBadge) {
-    if (unreadCount > 0) {
-      bellBadge.textContent = String(unreadCount > 99 ? '99+' : unreadCount);
-      bellBadge.style.display = 'inline-flex';
-    } else {
-      bellBadge.style.display = 'none';
-    }
-  }
+  const hasAny = (sharedNotifs.length + overdueLoans.length) > 0;
+  if (bellBadge) bellBadge.classList.toggle("show", hasAny);
 
   if (notifList) {
-    if (unreadCount === 0) {
+    if (!hasAny) {
         notifList.innerHTML = `<div style="padding:20px; text-align:center; color:#94a3b8; font-size:0.8rem;">All caught up! No alerts.</div>`;
     } else {
         const sharedHtml = sharedNotifs.map(n => {
@@ -1353,14 +1038,11 @@ function refreshUI() {
             : n.type === "DUE_SOON" ? "⏳"
             : "🔔";
         const sub = n.body ? `<div style="opacity:0.7;">${escapeHTML(n.body)}</div>` : "";
-
-        // ADDED SINGLE QUOTES TO IDs TO PREVENT CRASHES
-        const click = n.type === "LOAN_REQUEST" ? `window.openLoanRequestModal('${n.meta?.requestId || ""}')`
+        const click = n.type === "LOAN_REQUEST" ? `window.openLoanRequestModal(${Number(n.meta?.requestId) || 0})`
             : n.type === "MESSAGE" ? `window.openAdminMessageModal('${String(n.meta?.clientUid || "")}')`
             : n.type === "NEW_CLIENT" ? `openPopup('clientsModal')`
-            : n.type === "DUE_SOON" ? (n.meta?.loanId ? `openActionModal('PAY', '${n.meta.loanId}')` : `openPopup('clientsModal')`)
+            : n.type === "DUE_SOON" ? (n.meta?.loanId ? `openActionModal('PAY', ${Number(n.meta.loanId)})` : `openPopup('clientsModal')`)
             : `void 0`;
-
         return `
             <div class="notif-item" onclick="${click}">
             <span style="margin-right:8px;">${icon}</span>
@@ -1372,7 +1054,7 @@ function refreshUI() {
         }).join("");
 
         const overdueHtml = overdueLoans.map(l => `
-            <div class="notif-item" onclick="openActionModal('PAY', '${l.id}')">
+            <div class="notif-item" onclick="openActionModal('PAY', ${l.id})">
                 <span style="color:#ef4444; margin-right:8px;">⚠️</span>
                 <div>
                     <div style="font-weight:600;">Overdue: ${escapeHTML(l.clientName)}</div>
@@ -1385,41 +1067,21 @@ function refreshUI() {
     }
   }
 
-  // ✅ SIDEBAR UPDATE: Render Clickable Admin Rows for Profiles (Premium Design)
+  // ✅ SIDEBAR UPDATE: Render Clickable Admin Rows for Profiles
   const tbody = document.getElementById("sidebarAdminsBody");
   if (tbody) {
-    tbody.innerHTML = (state.admins || []).map(a => {
-        // Style roles differently (Owner = Blue, Admin = Green)
-        const role = String(a.role || "Admin").toUpperCase();
-        const roleBg = role === "OWNER" ? "rgba(59, 130, 246, 0.1)" : "rgba(34, 197, 94, 0.1)";
-        const roleColor = role === "OWNER" ? "#38bdf8" : "#4ade80";
-        const roleBorder = role === "OWNER" ? "rgba(59, 130, 246, 0.3)" : "rgba(34, 197, 94, 0.3)";
-
-        return `
-        <tr onclick="openAdminProfile('${a.uid || a.email}')"
-            style="cursor:pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); display: block;"
-            onmouseover="this.style.background='var(--icon-bg)'; this.style.transform='translateX(4px)';"
-            onmouseout="this.style.background='transparent'; this.style.transform='translateX(0)';">
-
-            <td style="padding: 14px 10px; border-bottom: 1px solid var(--divider); display: flex; justify-content: space-between; align-items: center; width: 100%;">
-
-                <div style="display:flex; align-items:center; gap:12px; overflow:hidden; min-width: 0;">
-                    <div class="avatar avatar-${(a.name.length)%5}" style="width:40px; height:40px; font-size:1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 2px solid var(--divider); flex-shrink:0;">
-                        ${getInitials(a.name)}
-                    </div>
-                    <div style="display: flex; flex-direction: column; justify-content: center; min-width: 0;">
-                        <span style="font-weight:800; font-size: 0.9rem; color: var(--text-main); line-height: 1.2; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">${escapeHTML(a.name)}</span>
-                        <span style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">${escapeHTML(a.phone || a.email || 'Team Member')}</span>
-                    </div>
+    tbody.innerHTML = (state.admins || []).map(a => `
+        <tr onclick="openAdminProfile('${a.uid || a.email}')" style="cursor:pointer; transition:background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+            <td style="font-weight:600; padding:12px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="avatar avatar-${(a.name.length)%5}" style="width:28px; height:28px; font-size:0.75rem;">${getInitials(a.name)}</div>
+                    <div>${escapeHTML(a.name)}</div>
                 </div>
-
-                <span style="background: ${roleBg}; color: ${roleColor}; border: 1px solid ${roleBorder}; padding: 4px 8px; border-radius: 8px; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0; margin-left: 10px;">
-                    ${role}
-                </span>
-
             </td>
-        </tr>`;
-    }).join("");
+            <td style="font-size:0.75rem; opacity:0.7; text-align:right; padding:12px;">
+                <span style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">${(a.role||"Admin").toUpperCase()}</span>
+            </td>
+        </tr>`).join("");
   }
 
   try { renderDashboard(); } catch (e) { console.error("Dash Error:", e); }
@@ -1428,11 +1090,11 @@ function refreshUI() {
   try { renderMonthlyTable(); } catch (e) { console.error("Monthly Table Error:", e); }
   try { renderClientsTable(); } catch (e) { console.error("Clients Table Error:", e); }
   try { renderCapitalHistory(); } catch (e) { console.error("Cap History Error:", e); }
-  try { renderAdminsTable(); } catch (e) { console.error("Admins Table Error:", e); }
 }
-
 // Global flag to prevent re-animating numbers every 15 seconds
 let __dashboardAnimRan = false;
+
+
 /* ==========================================================================
    LOANS HISTORY (Modal)
    ========================================================================== */
@@ -1511,6 +1173,7 @@ window.openLoanHistoryModal = function(){
   const input = document.getElementById("loanHistorySearchInput");
   if (input) {
     input.value = state.loanHistorySearch || "";
+    setTimeout(() => { try { input.focus(); } catch(_){} }, 120);
   }
   renderLoanHistory();
 };
@@ -1528,56 +1191,179 @@ window.setLoanHistoryFilter = function(mode, btn){
   renderLoanHistory();
 };
 
-function renderLoanHistory() {
+function renderLoanHistory(){
   const tbody = document.getElementById("loanHistoryBody");
   if (!tbody) return;
 
-  injectPremiumCardCSS(); // Inject the card styles
-
+  // Only render while modal exists; safe to render even when closed
   const listAll = dedupeLoansById(state.loans || []);
   const q = String(state.loanHistorySearch || "").trim().toLowerCase();
-  const mode = String(state.loanHistoryFilter || "ALL").toUpperCase();
+  const mode = String(state.loanHistoryFilter || "PAST").toUpperCase();
 
   let list = listAll;
 
-  if (mode === "PAST") list = list.filter(isLoanPast);
-  else if (mode === "ACTIVE") list = list.filter(l => String(l.status || "ACTIVE").toUpperCase() === "ACTIVE");
-  else if (mode === "OVERDUE") list = list.filter(l => String(l.status || "ACTIVE").toUpperCase() === "OVERDUE");
+  if (mode === "PAST") {
+    list = list.filter(isLoanPast);
+  } else if (mode === "ACTIVE") {
+    list = list.filter(l => String(l.status || "ACTIVE").toUpperCase() === "ACTIVE");
+  } else if (mode === "OVERDUE") {
+    list = list.filter(l => String(l.status || "ACTIVE").toUpperCase() === "OVERDUE");
+  } // ALL => no filter
 
   if (q) {
     list = list.filter(l => {
-      const hay = [l.id, l.clientName, l.clientPhone, l.collateralItem].map(v => String(v || '')).join(' ').toLowerCase();
-      return hay.includes(q);
+      const id = String(l.id ?? "");
+      const client = String(l.clientName ?? "");
+      const phone = String(l.clientPhone ?? "");
+      const item = String(l.collateralItem ?? "");
+      return (id.toLowerCase().includes(q) ||
+              client.toLowerCase().includes(q) ||
+              phone.toLowerCase().includes(q) ||
+              item.toLowerCase().includes(q));
     });
   }
 
-  list.sort((a, b) => {
+  // Sort newest first: updatedAt > paidAt > startDate > id
+  list.sort((a,b)=>{
     const ta = Date.parse(a.updatedAt || a.paidAt || a.startDate || "") || 0;
     const tb = Date.parse(b.updatedAt || b.paidAt || b.startDate || "") || 0;
     if (tb !== ta) return tb - ta;
-    return String(b.id || '').localeCompare(String(a.id || ''));
+    return Number(b.id || 0) - Number(a.id || 0);
   });
 
-  if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">No records found.</td></tr>`;
+  if (!list.length){
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">No loan history records found.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = list.map((l, index) => `
-    <tr style="border:none; background:transparent;">
-      <td colspan="9" style="padding:0; border:none; background:transparent;">
-        ${getPremiumLoanCardHTML(l, index)}
-      </td>
-    </tr>
-  `).join("");
+  tbody.innerHTML = list.map(l => {
+    const status = String(l.status || "ACTIVE").toUpperCase();
+
+    let badgeClass = "active";
+    if(status === "PAID") badgeClass = "paid";
+    if(status === "OVERDUE") badgeClass = "overdue";
+    if(status === "DEFAULTED") badgeClass = "defaulted";
+
+    const statusBadge = `<span class="status-pill status-${badgeClass}" style="padding:4px 10px; font-size:0.7rem; letter-spacing:0.5px; border-radius:6px;">${status === 'DEFAULTED' ? 'CLOSED' : status}</span>`;
+
+    const updated = _fmtDateShort(l.updatedAt || l.paidAt || l.startDate);
+    const amount = _fmtMoney(l.amount);
+    const total = _fmtMoney(l.totalDue);
+    const paid = _fmtMoney(l.paid);
+    const bal = _fmtMoney(l.balance);
+
+    const hasNotes = !!l.notes;
+
+    // Beautifully aligned professional layout with the new Note button attached
+    return `
+      <tr style="border-bottom: 1px solid rgba(150, 150, 150, 0.1); transition: background 0.2s ease;">
+        <td style="padding: 14px 10px; font-weight:800; color:var(--text-main); font-family:'Courier New', monospace; font-size:0.85rem;">#${escapeHTML(String(l.id ?? "--"))}</td>
+
+        <td style="padding: 14px 10px;">
+          <div style="font-weight:700; color:var(--text-main); font-size:0.9rem;">${escapeHTML(String(l.clientName || "Unknown"))}</div>
+          <div style="font-size:.75rem; color:var(--text-muted); font-family:'Courier New', monospace; margin-top:3px;">${escapeHTML(String(l.clientPhone || ""))}</div>
+        </td>
+
+        <td style="padding: 14px 10px; color:var(--text-muted); font-size:0.85rem;">${escapeHTML(String(l.collateralItem || "Personal Loan"))}</td>
+
+        <td style="padding: 14px 10px; text-align:right; font-weight:700; white-space:nowrap;">${amount}</td>
+        <td style="padding: 14px 10px; text-align:right; color:var(--accent-blue); font-weight:800; white-space:nowrap;">${total}</td>
+        <td style="padding: 14px 10px; text-align:right; color:var(--success); font-weight:800; white-space:nowrap;">${paid}</td>
+        <td style="padding: 14px 10px; text-align:right; font-weight:800; color:var(--text-main); white-space:nowrap;">${bal}</td>
+
+        <td style="padding: 14px 10px; text-align:center; white-space:nowrap;">${statusBadge}</td>
+
+        <td style="padding: 14px 10px; text-align:right; font-size:.8rem; color:var(--text-muted); white-space:nowrap;">
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+                <span>${updated}</span>
+                <button onclick="openActionModal('NOTE', ${l.id})" style="background: ${hasNotes ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)'}; color: ${hasNotes ? '#3b82f6' : 'var(--text-muted)'}; border: 1px solid ${hasNotes ? 'rgba(59, 130, 246, 0.3)' : 'transparent'}; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">
+                    📝 ${hasNotes ? 'Read Notes' : '+ Note'}
+                </button>
+            </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderDashboard() {
+  const container = document.getElementById("dashboardStats");
+  if (!container) return;
+
+  const loans = state.loans || [];
+
+  // 1. Calculate Stats
+  const totalLoaned = loans.reduce((s, l) => s + (l.amount || 0), 0);
+  const totalOutstanding = loans.reduce((s, l) => {
+    if (l.status === "DEFAULTED") return s;
+    return s + Math.max(0, l.balance || 0);
+  }, 0);
+  const totalProfit = loans.reduce((s, l) => s + (l.profitCollected || 0), 0);
+  const activeCount = loans.filter(l => l.status === "ACTIVE" || l.status === "OVERDUE").length;
+
+  const starting = state.startingCapital || 0;
+  const added = (state.capitalTxns || []).reduce((s, t) => s + (t.amount || 0), 0);
+  const paidIn = loans.reduce((s, l) => s + (l.paid || 0), 0);
+  const cashOnHand = starting + added + paidIn - totalLoaned;
+
+  // 2. Update Cash Display
+  const cashEl = document.getElementById("cashOnHandValue");
+  if (cashEl) {
+    cashEl.textContent = formatMoney(cashOnHand);
+    if (cashOnHand < 0) cashEl.classList.add("text-danger-glow");
+    else cashEl.classList.remove("text-danger-glow");
+  }
+
+  // 4. Update Starting Capital Display (Separate Section)
+  if (state.startingCapital > 0) {
+    if (document.getElementById("startingCapitalSetupRow")) document.getElementById("startingCapitalSetupRow").style.display = "none";
+    if (document.getElementById("startingCapitalInfoRow")) {
+      document.getElementById("startingCapitalInfoRow").style.display = "block";
+      if (document.getElementById("startingCapitalInfoValue")) document.getElementById("startingCapitalInfoValue").textContent = formatMoney(state.startingCapital);
+    }
+    if (document.getElementById("startingCapitalValue")) document.getElementById("startingCapitalValue").textContent = formatMoney(state.startingCapital);
+  } else {
+    if (document.getElementById("startingCapitalSetupRow")) document.getElementById("startingCapitalSetupRow").style.display = "block";
+    if (document.getElementById("startingCapitalInfoRow")) document.getElementById("startingCapitalInfoRow").style.display = "none";
+    if (document.getElementById("startingCapitalValue")) document.getElementById("startingCapitalValue").textContent = "Not set";
+  }
+
+  // 5. Render Stat Cards
+  container.innerHTML = `
+    <div class="stat-card" style="border-color: var(--primary);">
+      <div class="stat-label">Active Deals</div>
+      <div class="stat-value" style="font-size: 1.8rem;">${activeCount}</div>
+      <div class="stat-sub">Clients with open balances</div>
+    </div>
+    <div class="stat-card stat-purple">
+      <div class="stat-label">Total Loaned</div>
+      <div class="stat-value" id="statLoaned">${typeof __dashboardAnimRan !== 'undefined' && __dashboardAnimRan ? formatMoney(totalLoaned) : 'K0.00'}</div>
+      <div class="stat-sub">Lifetime capital deployed</div>
+    </div>
+    <div class="stat-card stat-orange">
+      <div class="stat-label">Outstanding</div>
+      <div class="stat-value" id="statOutstanding">${typeof __dashboardAnimRan !== 'undefined' && __dashboardAnimRan ? formatMoney(totalOutstanding) : 'K0.00'}</div>
+      <div class="stat-sub">Pending collection (Excl. Bad Debt)</div>
+    </div>
+    <div class="stat-card stat-green">
+      <div class="stat-label">Profit Made</div>
+      <div class="stat-value" id="statProfit">${typeof __dashboardAnimRan !== 'undefined' && __dashboardAnimRan ? formatMoney(totalProfit) : 'K0.00'}</div>
+      <div class="stat-sub">Total realized gains collected</div>
+    </div>
+  `;
+
+  if (typeof __dashboardAnimRan !== 'undefined' && !__dashboardAnimRan) {
+      animateValue(document.getElementById("statLoaned"), 0, totalLoaned, 1500);
+      animateValue(document.getElementById("statOutstanding"), 0, totalOutstanding, 2000);
+      animateValue(document.getElementById("statProfit"), 0, totalProfit, 2500);
+      __dashboardAnimRan = true;
+  }
 }
 
 function renderLoansTable() {
   recomputeAllLoans();
   const tbody = document.getElementById("loansTableBody");
   if (!tbody) return;
-
-  injectPremiumCardCSS(); // Inject the card styles
 
   try { wireClientSearchUI(); } catch(e) {}
 
@@ -1603,14 +1389,65 @@ function renderLoansTable() {
     document.getElementById("emptyState").style.display = shouldShow ? "block" : "none";
   }
 
-  tbody.innerHTML = visibleLoans.map((l, index) => `
-    <tr style="border:none; background:transparent;">
-      <td colspan="9" style="padding:0; border:none; background:transparent;">
-        ${getPremiumLoanCardHTML(l, index)}
+  tbody.innerHTML = visibleLoans.map((l, index) => {
+    const percent = Math.min(100, Math.round(((l.paid || 0) / (l.totalDue || 1)) * 100));
+    let progressColor = "var(--primary)";
+    if (percent >= 100) progressColor = "var(--success)";
+    else if (l.status === "OVERDUE") progressColor = "var(--danger)";
+    else if (l.status === "DEFAULTED") progressColor = "var(--neutral)";
+
+    const isOverdue = l.status === "OVERDUE";
+    const balanceStyle = isOverdue ? 'class="text-danger-glow" style="font-weight:bold;"' : 'style="font-weight:bold;"';
+    const avatarClass = `avatar-${l.id % 5}`;
+    const isClosed = l.status === "PAID" || l.status === "DEFAULTED";
+    const disabledAttr = isClosed ? 'disabled aria-disabled="true"' : '';
+    const disabledOpacity = isClosed ? 'opacity:0.3;' : '';
+
+    const waNumber = formatWhatsApp(l.clientPhone);
+    const waMsg = encodeURIComponent(`Hi ${l.clientName}, reminder: Balance of ${formatMoney(l.balance)} was due on ${formatDate(l.dueDate)}.`);
+    const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waMsg}` : "#";
+    const waStyle = waNumber ? "color:#4ade80;" : "color:#64748b; cursor:not-allowed;";
+
+    // FIX APPLIED: Added data-loan-id="${l.id}" for reliable mobile interaction
+    return `
+    <tr class="row-${(l.status || 'active').toLowerCase()}" data-loan-id="${l.id}" style="animation-delay: ${index * 0.05}s">
+      <td data-label="ID"><span style="opacity:0.5; font-size:0.8rem;">#${l.id}</span></td>
+      <td data-label="Client">
+        <div class="client-flex">
+          <div class="avatar ${avatarClass}">${escapeHTML(getInitials(l.clientName))}</div>
+          <div>
+            <div style="font-weight:600; color:var(--text-main);">${escapeHTML(l.clientName)}</div>
+            <div class="subtle" style="font-size:0.75rem;">${escapeHTML(l.clientPhone || '')}</div>
+          </div>
+        </div>
+      </td>
+      <td data-label="Item"><span style="color:var(--text-muted);">${escapeHTML(l.collateralItem || '-')}</span></td>
+      <td data-label="Progress">
+        <div style="min-width: 100px;">
+          <div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:4px;">
+            <span>${percent}%</span>
+            <span>${formatMoney(l.paid)} / ${formatMoney(l.totalDue)}</span>
+          </div>
+          <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:4px; overflow:hidden;">
+            <div style="width:${percent}%; background:${progressColor}; height:100%; border-radius:4px; transition: width 1s ease;"></div>
+          </div>
+        </div>
+      </td>
+      <td data-label="Start">${formatDate(l.startDate)}</td>
+      <td data-label="Due">${formatDate(l.dueDate)}</td>
+      <td data-label="Balance" ${balanceStyle}>${formatMoney(l.balance)}</td>
+      <td data-label="Status"><span class="status-pill status-${(l.status || 'active').toLowerCase()}">${l.status}</span></td>
+      <td data-label="Actions" style="text-align:right; white-space:nowrap;">
+        <button class="btn-icon" onclick="openReceipt(${l.id})" title="Print Receipt">🖨️</button>
+        <a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-icon" style="${waStyle}; text-decoration:none; display:inline-flex;" title="WhatsApp">💬</a>
+        <button class="btn-icon" onclick="openActionModal('PAY', ${l.id})" title="Pay" style="color:#38bdf8; ${disabledOpacity}" ${disabledAttr}>💳</button>
+        <button class="btn-icon" onclick="openActionModal('WRITEOFF', ${l.id})" title="Bad Debt" style="color:#f87171; ${disabledOpacity}" ${disabledAttr}>🗑️</button>
+        <button class="btn-icon" onclick="openActionModal('NOTE', ${l.id})" title="Note">📝</button>
       </td>
     </tr>
-  `).join("");
+  `}).join("");
 }
+
 function renderRepaymentsTable() {
   const tbody = el("repaymentsTableBody");
   if (!tbody) return;
@@ -1679,6 +1516,7 @@ function renderMonthlyTable() {
     const dateLabel = current.toLocaleDateString("en-ZM", { month: 'short', year: 'numeric' });
     const isCurrent = (key === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
 
+    // Highlight current month with a border
     const borderStyle = isCurrent ? "border-left: 4px solid var(--primary);" : "border-left: 4px solid transparent;";
 
     html += `
@@ -1702,9 +1540,11 @@ function renderMonthlyTable() {
       </td>
     </tr>`;
 
+    // Move back one month
     current.setMonth(current.getMonth() - 1);
   }
 
+  // Handle empty history
   if (html === "") {
       html = `<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">No records found yet.</td></tr>`;
   }
@@ -1746,6 +1586,7 @@ function wireClientSearchUI() {
     }
 }
 
+// 👇 INSERT THIS NEW FUNCTION HERE
 window.setClientSearch = function(q) {
   clientSearchQuery = q;
   renderClientsTable();
@@ -1774,7 +1615,8 @@ function formatZambianPhone(phone) {
     return phone;
 }
 
-/* 🚨 FIX: Client Profile Merging Collision Fixed */
+/* admin/app.js - renderClientsTable (Properly Aligned Card Layout) */
+
 function renderClientsTable() {
     const tbody = document.getElementById("clientsTableBody");
     if (!tbody) return;
@@ -1827,10 +1669,7 @@ function renderClientsTable() {
         if (uid && clientMap[`uid:${uid}`]) entry = clientMap[`uid:${uid}`];
 
         if (!entry && phoneN) {
-            // Only merge by phone if BOTH records are "manual" (no app account yet)
-            entry = Object.values(clientMap).find(c =>
-                normalizePhone(c.phone) === phoneN && !c.uid && !uid
-            ) || null;
+            entry = Object.values(clientMap).find(c => normalizePhone(c.phone) === phoneN) || null;
         }
 
         if (!entry) {
@@ -1891,6 +1730,7 @@ function renderClientsTable() {
         return Math.abs(h) % 5;
     };
 
+    // Card style (Padding moved to inner TD to fix layout conflicts)
     const cardStyle = `
         display: block !important;
         width: 100%;
@@ -1907,6 +1747,7 @@ function renderClientsTable() {
         overflow: hidden;
     `;
 
+    // Reusable interior styles mapped to your variables for perfect Light/Dark mode support
     const gridStyle = `display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 12px; padding: 12px; margin-bottom: 16px;`;
     const labelStyle = `font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 700;`;
     const valStyle = `font-weight: 600; color: var(--text-main); font-size: 0.85rem; line-height: 1.3;`;
@@ -1915,6 +1756,7 @@ function renderClientsTable() {
 
     tbody.innerHTML = displayList.map(c => {
 
+        // Upgraded the APP LINKED pill to look like a modern, crisp badge
         const accountPill = c.uid
             ? `<span style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); padding: 4px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -1929,6 +1771,7 @@ function renderClientsTable() {
         const addressPretty = c.address ? escapeHTML(c.address) : "NOT SET";
         const createdPretty = c.createdAt ? formatDate(c.createdAt) : "";
 
+        // Loan summary for this client
         const loansFor = (allLoans || []).filter(l => {
           const byUid = c.uid && l.clientUid && String(l.clientUid) === String(c.uid);
           const byPhone = c.phone && normalizePhone(l.clientPhone || '') === normalizePhone(c.phone || '');
@@ -2007,391 +1850,58 @@ function renderClientsTable() {
     }).join("");
 }
 
+// Small utility used by admin views (same formatting as client portal)
 function __fmtMoney(n) {
   const v = Number(n || 0);
   if (!Number.isFinite(v)) return "K0.00";
   return "K" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-
-
-function renderDashboard() {
-  const container = document.getElementById("dashboardStats");
-  if (!container) return;
-
-  const loans = state.loans || [];
-  const expenses = state.expenses || [];
-
-  // 1. Core Financial Calculations
-  const totalLoaned = loans.reduce((s, l) => s + (Number(l.amount) || 0), 0);
-  const totalOutstanding = loans.reduce((s, l) => {
-      if (l.status === "DEFAULTED") return s;
-      return s + Math.max(0, Number(l.balance) || 0);
-  }, 0);
-  const totalProfit = loans.reduce((s, l) => s + (Number(l.profitCollected) || 0), 0);
-  const totalExpenses = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const activeCount = loans.filter(l => l.status === "ACTIVE" || l.status === "OVERDUE").length;
-
-  // 2. Cash on Hand Formula (Capital + Added + Paid In - Loaned Out - Expenses)
-  const starting = Number(state.startingCapital) || 0;
-  const capitalIn = (state.capitalTxns || []).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  const repaymentsIn = loans.reduce((s, l) => s + (Number(l.paid) || 0) + (Number(l.saleAmount) || 0), 0);
-
-  const cashOnHand = (starting + capitalIn + repaymentsIn) - (totalLoaned + totalExpenses);
-
-  // 3. Update Cash Display
-  const cashEl = document.getElementById("cashOnHandValue");
-  if (cashEl) {
-    cashEl.textContent = formatMoney(cashOnHand);
-    if (cashOnHand < 0) cashEl.classList.add("text-danger-glow");
-    else cashEl.classList.remove("text-danger-glow");
-  }
-
-  // Update Starting Capital UI Header
-  if (state.startingCapital > 0) {
-      if (document.getElementById("startingCapitalSetupRow")) document.getElementById("startingCapitalSetupRow").style.display = "none";
-      if (document.getElementById("startingCapitalValue")) document.getElementById("startingCapitalValue").textContent = formatMoney(state.startingCapital);
-  } else {
-      if (document.getElementById("startingCapitalSetupRow")) document.getElementById("startingCapitalSetupRow").style.display = "block";
-      if (document.getElementById("startingCapitalValue")) document.getElementById("startingCapitalValue").textContent = "Not set";
-  }
-
-  // 4. Handle Staggered Animations
-  const isFirstLoad = !(typeof __dashboardAnimRan !== 'undefined' && __dashboardAnimRan);
-  const animClass = isFirstLoad ? "fade-in" : "";
-  const getDelay = (i) => isFirstLoad ? `animation-delay: ${i * 0.12}s;` : "";
-
-  // 5. Render Stat Cards
-  container.innerHTML = `
-    <div class="stat-card ${animClass}" style="border-color: var(--primary); ${getDelay(1)}">
-      <div class="stat-label">Active Deals</div>
-      <div class="stat-value" style="font-size: 1.8rem;">${activeCount}</div>
-      <div class="stat-sub">Clients with open balances</div>
-    </div>
-    <div class="stat-card stat-purple ${animClass}" style="${getDelay(2)}">
-      <div class="stat-label">Total Loaned</div>
-      <div class="stat-value" id="statLoaned">${isFirstLoad ? 'K0.00' : formatMoney(totalLoaned)}</div>
-      <div class="stat-sub">Lifetime capital deployed</div>
-    </div>
-    <div class="stat-card stat-orange ${animClass}" style="${getDelay(3)}">
-      <div class="stat-label">Outstanding</div>
-      <div class="stat-value" id="statOutstanding">${isFirstLoad ? 'K0.00' : formatMoney(totalOutstanding)}</div>
-      <div class="stat-sub">Expected Collection</div>
-    </div>
-    <div class="stat-card stat-green ${animClass}" style="${getDelay(4)}">
-      <div class="stat-label">Net Profit</div>
-      <div class="stat-value" id="statProfit">${isFirstLoad ? 'K0.00' : formatMoney(totalProfit)}</div>
-      <div class="stat-sub">Interest Collected</div>
-    </div>
-    <div class="stat-card ${animClass}" style="border-color:#ef4444; background:rgba(239, 68, 68, 0.05); ${getDelay(5)}">
-      <div class="stat-label" style="color:#ef4444;">Expenses</div>
-      <div class="stat-value" id="statExpenses" style="color:#ef4444;">${isFirstLoad ? 'K0.00' : formatMoney(totalExpenses)}</div>
-      <div class="stat-sub">Commissions & Costs</div>
-    </div>
-  `;
-
-  // 6. Trigger Number Counting Animation on first load
-  if (isFirstLoad) {
-      animateValue(document.getElementById("statLoaned"), 0, totalLoaned, 1500);
-      animateValue(document.getElementById("statOutstanding"), 0, totalOutstanding, 2000);
-      animateValue(document.getElementById("statProfit"), 0, totalProfit, 2500);
-      animateValue(document.getElementById("statExpenses"), 0, totalExpenses, 3000);
-      __dashboardAnimRan = true;
-  }
+// Failsafe stub for capital history renderer (some builds call this)
+function renderCapitalHistory(){
+  try{
+    const el = document.getElementById('capitalHistoryList');
+    if(!el) return;
+    el.innerHTML = '<div style="color:var(--text-muted)">No capital history available.</div>';
+  }catch(e){ console.warn('renderCapitalHistory error', e); }
 }
 
-function renderCapitalHistory() {
-  const tbody = document.getElementById("capitalHistoryBody");
-  if (!tbody) return;
-
-  // Combine capitalTxns and legacy capital array if both exist
-  const txns = [...(state.capitalTxns || []), ...(state.capital || [])];
-
-  if (txns.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:40px 20px; color:var(--text-muted); font-style:italic;">No additional capital recorded yet.</td></tr>`;
-    return;
-  }
-
-  // Sort newest first
-  txns.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
-
-  tbody.innerHTML = txns.map(t => {
-    const dateObj = new Date(t.date || t.createdAt);
-    const dateStr = isNaN(dateObj) ? "-" : dateObj.toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: '2-digit' });
-    const timeStr = isNaN(dateObj) ? "-" : dateObj.toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' });
-
-    return `
-      <tr style="border-bottom: 1px solid var(--divider);">
-          <td style="padding:12px 10px; font-weight:500;">${dateStr}</td>
-          <td style="padding:12px 10px; color:var(--text-muted); font-size:0.8rem;">${timeStr}</td>
-          <td style="padding:12px 10px;">
-            <div style="font-weight:600; color:var(--text-main);">${escapeHTML(t.recordedBy || 'Admin')}</div>
-            <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHTML(t.note || "Added Funds")}</div>
-          </td>
-          <td style="padding:12px 10px; color:#4ade80; font-weight:800; text-align:right;">
-            +${formatMoney(t.amount)}
-          </td>
-      </tr>
-    `;
-  }).join("");
-}
 
 function renderAdminsTable() {
   const tbody = el("adminsTableBody");
   if (!tbody) return;
-
-  // 🚨 FIX: Check if current user is the Owner to show delete button
-  const currentRole = state.currentUserProfile?.role || localStorage.getItem('stallz_offline_role') || '';
-  const isOwner = currentRole.toLowerCase() === 'owner';
-
-  tbody.innerHTML = (state.admins || []).map(a => {
-    let actionHtml = '-';
-    if (isOwner && a.role.toLowerCase() !== 'owner') {
-        actionHtml = `<button class="btn-icon" style="color:#ef4444; background:rgba(239, 68, 68, 0.1); padding:4px 8px; border-radius:6px; font-size: 0.7rem; font-weight: 700;" onclick="revokeAdminAccess('${a.uid}')">Revoke Access</button>`;
-    } else if (a.role.toLowerCase() === 'owner') {
-        actionHtml = `<span style="font-size:0.75rem; color:var(--primary); font-weight:700;">Owner</span>`;
-    }
-
-    return `
-      <tr>
-        <td data-label="ID">#${a.id}</td>
-        <td data-label="Name">${a.name}</td>
-        <td data-label="Role">${a.role}</td>
-        <td data-label="Phone">${a.phone || '-'}</td>
-        ${isOwner ? `<td data-label="Action" style="text-align:right;">${actionHtml}</td>` : ''}
-      </tr>
-    `;
-  }).join("");
+  tbody.innerHTML = (state.admins || []).map(a => `
+  <tr>
+    <td data-label="ID">#${a.id}</td>
+    <td data-label="Name">${a.name}</td>
+    <td data-label="Role">${a.role}</td>
+    <td data-label="Phone">${a.phone || '-'}</td>
+  </tr>`).join("");
 }
 
-// 🚨 NEW FUNCTION: Securely delete an admin
-window.revokeAdminAccess = function(uidToRemove) {
-    if (!uidToRemove) return showToast("Cannot remove this admin. Missing UID.", "error");
-
-    showAdminDialog({
-        title: 'Revoke Admin Access',
-        message: 'Are you sure you want to remove this team member? They will be immediately locked out of the dashboard.',
-        btnText: 'Yes, Revoke Access',
-        btnClass: 'btn-danger',
-        onConfirm: async () => {
-            try {
-                if (!OFFLINE_TEST_MODE && dataRef) {
-                    await firebase.database().ref(`admins/${uidToRemove}`).remove();
-
-                    const v5AdminsRef = firebase.database().ref(`loanManagerData_v5/admins`);
-                    const snap = await v5AdminsRef.once('value');
-                    const v5Admins = snap.val() || [];
-
-                    if (Array.isArray(v5Admins)) {
-                        const updatedList = v5Admins.filter(a => a.uid !== uidToRemove);
-                        await v5AdminsRef.set(updatedList);
-                    } else if (typeof v5Admins === 'object') {
-                        for (const key in v5Admins) {
-                            if (v5Admins[key].uid === uidToRemove) {
-                                await v5AdminsRef.child(key).remove();
-                            }
-                        }
-                    }
-                }
-
-                state.admins = state.admins.filter(a => a.uid !== uidToRemove);
-                renderAdminsTable();
-                refreshUI();
-                showToast("Admin access revoked successfully.", "success");
-
-            } catch (error) {
-                console.error("Failed to revoke admin:", error);
-                showToast("Failed to remove admin. Check permissions.", "error");
-            }
-        }
-    });
-};
-
-/* ============================================================================
-   13.0 | ADMIN PROFILE & COMMISSION LOGIC (Restored & Polished)
-   ============================================================================ */
-
-function calculateLoanCommission(loan) {
-    const stdRate = INTEREST_BY_PLAN[loan.plan] || 0.40;
-    const actualRate = (loan.customInterest !== undefined && loan.customInterest !== null)
-                        ? (Number(loan.customInterest) / 100)
-                        : stdRate;
-
-    const principal = Number(loan.amount || 0);
-    const totalDue = Number(loan.totalDue || 0);
-    const profit = Math.max(0, totalDue - principal);
-
-    let reductionFactor = 0;
-    if (actualRate < (stdRate - 0.01) && stdRate > 0) {
-        reductionFactor = (stdRate - actualRate) / stdRate;
-    }
-
-    const BASE_COMMISSION = 0.25; // 25% Standard
-    let finalCommRate = BASE_COMMISSION * (1 - reductionFactor);
-    finalCommRate = Math.max(0, Math.min(BASE_COMMISSION, finalCommRate));
-
-    return {
-        profit: profit,
-        stdRate: stdRate,
-        actualRate: actualRate,
-        commRate: finalCommRate,
-        amount: profit * finalCommRate,
-        isPenalized: reductionFactor > 0.01
-    };
-}
-
-window.openAdminProfile = function(identifier) {
-    const sidebar = document.getElementById("profileSidebar");
-    const overlay = document.getElementById("profileOverlay");
-    if (sidebar) sidebar.classList.remove("open");
-    if (overlay) overlay.classList.add("hidden");
-
-    const admin = state.admins.find(a => String(a.uid) === String(identifier) || String(a.email) === String(identifier));
-    if (!admin) return showToast("Admin profile not found", "error");
-
-    const nameLower = (admin.name || "").toLowerCase();
-    const isOwner = nameLower.includes("prince") || nameLower.includes("kasininga");
-
-    const elAvatar = document.getElementById("apAvatar");
-    if(elAvatar) {
-        elAvatar.textContent = getInitials(admin.name);
-        elAvatar.className = `avatar avatar-${(admin.name.length) % 5}`;
-    }
-
-    if(document.getElementById("apName")) document.getElementById("apName").textContent = admin.name;
-    if(document.getElementById("apRole")) document.getElementById("apRole").textContent = (admin.role || "Admin").toUpperCase();
-    if(document.getElementById("apContact")) document.getElementById("apContact").textContent = admin.email || admin.phone || "";
-
-    const adminLoans = state.loans.filter(l => {
-        const creator = (l.createdBy || "").toLowerCase();
-        return creator === nameLower || (nameLower.includes("nyambi") && creator === "nyambi sitaleka");
-    });
-
-    if(document.getElementById("apLoansCount")) document.getElementById("apLoansCount").textContent = adminLoans.length;
-    const recentDiv = document.getElementById("apRecentList");
-    const sortedLoans = [...adminLoans].sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
-
-    if (recentDiv) {
-        if (sortedLoans.length === 0) {
-            recentDiv.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-style:italic; padding:20px;">No loans recorded yet.</div>`;
-        } else {
-            recentDiv.innerHTML = sortedLoans.slice(0, 10).map(l => `
-                <div style="display:flex; justify-content:space-between; padding:14px 16px; background:var(--card-bg); border-radius:12px; border:1px solid var(--divider); align-items:center; margin-bottom:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                    <div>
-                        <div style="font-size:0.95rem; font-weight:700; color:var(--text-main);">${escapeHTML(l.clientName)}</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">${formatDate(l.startDate)}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:1rem; font-weight:800; color:var(--primary);">${formatMoney(l.amount)}</div>
-                        <span class="status-pill status-${l.status.toLowerCase()}" style="font-size:0.65rem; padding:3px 8px; margin-top:6px; display:inline-block;">${l.status}</span>
-                    </div>
-                </div>`).join("");
-        }
-    }
-
-    const tabBtn = document.getElementById("tabBtnCommissions");
-    const tabContent = document.getElementById("ap-tab-commissions");
-
-    if (isOwner) {
-        if(tabBtn) tabBtn.style.display = "none";
-        if(tabContent) tabContent.style.display = "none";
-        switchProfileTab('activity');
-    } else {
-        if(tabBtn) tabBtn.style.display = "block";
-        let totalEarned = 0, weightedRateSum = 0;
-        const commissionRows = adminLoans.map(l => {
-            const c = calculateLoanCommission(l);
-            totalEarned += c.amount;
-            weightedRateSum += c.commRate;
-            return { loan: l, ...c };
-        });
-
-        const paidComm = (state.expenses || []).filter(e => e.category === 'Commission' && e.note.toLowerCase().includes(nameLower)).reduce((s, e) => s + e.amount, 0);
-        const pendingComm = Math.max(0, totalEarned - paidComm);
-
-        if (tabContent) {
-            let html = `
-                <div style="background:var(--card-bg); padding:24px; border-radius:16px; margin-bottom:24px; border:1px solid var(--divider); box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:20px; border-bottom:1px dashed var(--divider); padding-bottom:20px;">
-                        <div>
-                            <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:6px;">Total Earned</div>
-                            <div style="font-size:1.2rem; font-weight:800; color:var(--success);">${formatMoney(totalEarned)}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; font-weight:700; margin-bottom:6px;">Total Paid</div>
-                            <div style="font-size:1.2rem; font-weight:800; color:var(--text-main);">${formatMoney(paidComm)}</div>
-                        </div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                        <div><div style="font-size:0.9rem; font-weight:700; color:var(--text-main);">Pending Payout</div></div>
-                        <div style="font-size:1.6rem; font-weight:900; color:var(--primary);">${formatMoney(pendingComm)}</div>
-                    </div>
-                    <button class="btn btn-primary" onclick="openExpenseModal('Commission', 'Commission Payment for ${escapeHTML(admin.name)}')" style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:14px; font-size:1rem; border-radius:12px;">
-                        <i class="fas fa-money-bill-wave"></i> Pay Commission
-                    </button>
-                </div>
-
-                <div style="background:rgba(59, 130, 246, 0.05); border:1px solid rgba(59, 130, 246, 0.2); padding:14px; border-radius:12px; font-size:0.8rem; color:#3b82f6; margin-bottom:24px; display:flex; gap:12px; align-items:flex-start;">
-                    <span style="font-size:1.2rem; line-height:1;">ℹ️</span>
-                    <div style="line-height:1.5;">Standard commission is <strong>25% of profit</strong>. If the loan interest rate is discounted, the commission is reduced proportionally.</div>
-                </div>
-
-                <h4 style="color:var(--text-muted); font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">Commission Ledger</h4>
-                <div class="table-wrapper" style="border-radius:12px; border:1px solid var(--divider); overflow:hidden;">
-                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin:0;">
-                    <thead style="background:var(--card-bg);">
-                        <tr style="text-align:left;">
-                            <th style="padding:14px 15px; color:var(--text-muted); font-weight:600;">Loan Details</th>
-                            <th style="padding:14px 10px; text-align:right; color:var(--text-muted); font-weight:600;">Profit</th>
-                            <th style="padding:14px 15px; text-align:right; color:var(--text-muted); font-weight:600;">Your Cut</th>
-                        </tr>
-                    </thead>
-                    <tbody>${commissionRows.map(row => `
-                        <tr style="border-top:1px solid var(--divider); background:var(--bg-color);">
-                            <td style="padding:14px 15px;">
-                                <div style="font-weight:700; color:var(--text-main);">${escapeHTML(row.loan.clientName)}</div>
-                                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">${formatDate(row.loan.startDate)}</div>
-                            </td>
-                            <td style="padding:14px 10px; text-align:right;">
-                                <div style="font-family:monospace; color:var(--text-main); font-weight:600;">${formatMoney(row.profit)}</div>
-                            </td>
-                            <td style="padding:14px 15px; text-align:right;">
-                                <div style="font-weight:900; color:var(--success); font-size:0.95rem;">+${formatMoney(row.amount)}</div>
-                                <div style="font-size:0.65rem; color:var(--text-muted); margin-top:4px; font-weight:600;">
-                                    ${row.isPenalized ? '<span style="color:#ef4444;">⚠️ SCALED</span>' : '<span>✔️ 25% STD</span>'}
-                                </div>
-                            </td>
-                        </tr>`).join("") || '<tr><td colspan="3" style="text-align:center; padding:30px; color:var(--text-muted); font-style:italic;">No commission history yet.</td></tr>'}
-                    </tbody>
-                </table></div>`;
-            tabContent.innerHTML = html;
-        }
-    }
-    openPopup("adminProfileModal");
-};
-
-window.switchProfileTab = function(tabName, btn) {
-    const parent = btn ? btn.parentElement : document.querySelector("#adminProfileModal .sketch-tabs");
-    if(parent) parent.querySelectorAll(".sketch-btn").forEach(b => b.classList.remove("active"));
-    if(btn) btn.classList.add("active");
-    document.querySelectorAll("#adminProfileModal .profile-tab-content").forEach(d => d.style.display = "none");
-    const target = document.getElementById("ap-tab-" + tabName);
-    if(target) target.style.display = "block";
-};
-
+// Open admin client details from cached client data
 window.openAdminClientDetails = function(key){
   try{
-    injectPremiumCardCSS(); // Ensure CSS is present for the premium cards
-
     const data = (window.adminClientCache || {})[key];
     const modal = document.getElementById('adminClientDetailsModal');
     const target = document.getElementById('adminClientDetailsContent');
     if(!modal || !target) return;
     if(!data){ target.innerHTML = '<div style="color:var(--text-muted)">Client details not found.</div>'; modal.style.display='flex'; setTimeout(()=>modal.classList.remove('modal-hidden'),10); return; }
 
-    // Use the new Premium Card layout here instead of the basic divs
-    const loansHtml = (data.loans || []).map((l, idx) => getPremiumLoanCardHTML(l, idx)).join('') || '<div style="color:var(--text-muted); font-style:italic; padding: 20px; text-align: center;">No loans available.</div>';
+    // THE FIX: Added the "Read Notes / + Note" button right onto the loan card
+    const loansHtml = (data.loans || []).map(l=>`
+      <div style="padding:10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                  <strong>Loan #${escapeHTML(l.id || l.loanId || '')}</strong> — <span class="status-pill status-${(l.status||'').toLowerCase()}" style="font-size:0.65rem; padding:2px 6px;">${escapeHTML(l.status||'')}</span>
+                  <div style="margin-top:4px; font-size:0.85rem; color:var(--text-muted);">Balance: ${__fmtMoney(l.balance||l.totalDue||0)}</div>
+              </div>
+              ${l.notes ? `<button onclick="openActionModal('NOTE', ${l.id})" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; cursor: pointer;">📝 Read Notes</button>` : `<button onclick="openActionModal('NOTE', ${l.id})" style="background: transparent; color: var(--text-muted); border: 1px dashed var(--border); padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; cursor: pointer;">📝 + Note</button>`}
+          </div>
+      </div>
+    `).join('') || '<div style="color:var(--text-muted); font-style:italic;">No loans.</div>';
 
+    // EXTRACT ALL NOTES FOR THIS CLIENT (The tab we built earlier)
     let notesHtml = "";
     (data.loans || []).forEach(l => {
         if (l.notes) {
@@ -2426,11 +1936,11 @@ window.openAdminClientDetails = function(key){
           <div id="tabBtnClientNotes" onclick="switchClientDetailsTab('notes')" style="padding-bottom: 8px; cursor: pointer; font-weight: 600; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.2s;">Client Notes Log</div>
       </div>
 
-      <div id="clientDetailsLoansView" style="margin-top:20px; max-height:400px; overflow:auto; display: block;">
+      <div id="clientDetailsLoansView" style="margin-top:15px; max-height:300px; overflow:auto; display: block;">
           ${loansHtml}
       </div>
 
-      <div id="clientDetailsNotesView" style="margin-top:20px; max-height:400px; overflow:auto; display: none;">
+      <div id="clientDetailsNotesView" style="margin-top:15px; max-height:300px; overflow:auto; display: none;">
           ${notesHtml}
       </div>
 
@@ -2443,6 +1953,7 @@ window.openAdminClientDetails = function(key){
   }catch(e){ console.error(e); }
 };
 
+// Tab Switcher Logic
 window.switchClientDetailsTab = function(tab) {
     const lView = document.getElementById("clientDetailsLoansView");
     const nView = document.getElementById("clientDetailsNotesView");
@@ -2463,19 +1974,23 @@ window.switchClientDetailsTab = function(tab) {
  * 8.0 | RECEIPT GENERATION
  * ============================================================================ */
 
+
 window.openReceipt = function(loanId) {
   const loan = state.loans.find(l => l.id == loanId);
   if (!loan) return;
 
+  // Sort history (not strictly used in this compact receipt, but kept for logic)
   const history = state.repayments
     .filter(r => r.loanId === loan.id)
     .sort((a, b) => (parseDateSmart(b.date)?.getTime() || 0) - (parseDateSmart(a.date)?.getTime() || 0));
 
+  // Determine Status Color
   let statusColor = "#333";
   let statusText = loan.status;
   if (loan.balance <= 0.01) { statusColor = "#16a34a"; statusText = "PAID IN FULL"; }
   else if (loan.status === "OVERDUE") { statusColor = "#dc2626"; }
 
+  // Calculate Interest Percentage
   const interestPercent = ((loan.rate || 0) * 100).toFixed(0);
 
   const receiptHTML = `
@@ -2551,12 +2066,14 @@ window.openReceipt = function(loanId) {
   const contentBox = document.getElementById("receiptContent");
   if (contentBox) contentBox.innerHTML = receiptHTML;
 
+  // Show Modal
   const modal = document.getElementById("receiptModal");
   if (modal) {
       modal.style.display = "flex";
       setTimeout(() => modal.classList.remove("modal-hidden"), 10);
   }
 
+  // Setup Download Button
   const dlBtn = document.getElementById("downloadImageBtn");
   if (dlBtn) {
       dlBtn.onclick = function() {
@@ -2597,6 +2114,7 @@ window.setFilter = function(type, value, btnElement) {
 window.switchOverviewTab = function(tabName, btnElement) {
   if (typeof vibrate === "function") vibrate([15]);
 
+  // FIX: Scroll to top when switching so content isn't hidden
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const dash = document.getElementById("tab-dashboard");
@@ -2611,8 +2129,10 @@ window.switchOverviewTab = function(tabName, btnElement) {
     void target.offsetWidth;
     target.classList.add("animate-in");
 
+    // --- NEW: SMART OFFLINE CHECK ---
+    // If the device is offline, this instantly drops the blurred "Connection Lost" blocker over the card
     if (typeof window.enforceOfflineView === 'function') {
-        window.enforceOfflineView(target.querySelector(".card-inner"));
+        window.enforceOfflineView(target.querySelector(".card-inner") || target);
     }
   }
 
@@ -2637,6 +2157,8 @@ function updateNavHighlight(activeBtnId) {
   }
 }
 
+/* admin/app.js - Fixed closeAllModals to prevent animation conflict */
+
 window.closeAllModals = function(resetNav = true, exceptId = null, immediate = false) {
   const ids = ['monthlyModal', 'clientsModal', 'adminsModal'];
 
@@ -2645,24 +2167,30 @@ window.closeAllModals = function(resetNav = true, exceptId = null, immediate = f
     const m = document.getElementById(id);
     if (!m) return;
 
+    // Check if visible
     const isVisible = (m.style.display === "flex" || m.style.display === "block") && !m.classList.contains("modal-hidden");
     if (!isVisible) return;
 
+    // 1. CRITICAL FIX: Remove 'switching' class so the Close Animation takes priority
     m.classList.remove("switching");
 
+    // 2. Immediate mode (for fast switching between tabs)
     if (immediate) {
       m.classList.add("modal-hidden");
       m.style.display = "none";
       return;
     }
 
+    // 3. Standard Close (Animates out nicely)
     m.classList.add("modal-hidden");
 
+    // Wait for the CSS animation (smoothSlideOut) to finish
     setTimeout(() => {
       if (m.classList.contains("modal-hidden")) m.style.display = "none";
     }, 350);
   });
 
+  // Always close notifications dropdown
   const dd = document.getElementById("notifDropdown");
   if (dd) dd.classList.remove("show");
 
@@ -2675,58 +2203,73 @@ window.openPopup = function(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
 
+  // 1. STOP any pending close timers to prevent glitches
   if (typeof _modalTimers !== 'undefined' && _modalTimers[modalId]) {
       clearTimeout(_modalTimers[modalId]);
       delete _modalTimers[modalId];
   }
 
+  // 2. CHECK: Are we switching between main tabs? (Clients <-> Monthly)
   const navSheets = ['monthlyModal', 'clientsModal', 'adminsModal'];
   const isNavSheet = navSheets.includes(modalId);
   let isSwitching = false;
 
   if (isNavSheet) {
+      // Look for other open sheets
       const otherOpen = navSheets.find(id => {
           if (id === modalId) return false;
           const el = document.getElementById(id);
+          // Check if it's currently visible
           return el && el.style.display !== "none" && !el.classList.contains("modal-hidden");
       });
       if (otherOpen) isSwitching = true;
   }
 
+  // 3. TOGGLE LOGIC
   const isOpen = (modal.style.display === "flex" || modal.style.display === "block") && !modal.classList.contains("modal-hidden");
   if (isOpen) {
     if (typeof window.closePopup === 'function') window.closePopup(modalId);
     return;
   }
 
+  // 4. PREPARE UI
+  // Close notifications dropdown
   const dd = document.getElementById("notifDropdown");
   if (dd) dd.classList.remove("show");
 
+  // ⚡ CRITICAL FIX: If switching, pass 'true' to close others INSTANTLY (No laggy animation)
   if (typeof window.closeAllModals === 'function') {
       window.closeAllModals(false, modalId, isSwitching);
   }
 
+  // 5. OPEN THE NEW MODAL
   modal.style.display = "flex";
   modal.classList.remove("modal-hidden");
 
+  // --- NEW: SMART OFFLINE CHECK ---
+  // Instantly blocks the modal content if the device is offline
   if (typeof window.enforceOfflineView === 'function') {
       window.enforceOfflineView(modal.querySelector(".modal"));
   }
 
+  // 6. APPLY "FAST SWITCH" ANIMATION CLASS
+  // If switching, we use a lighter fade-in. If opening fresh, we use the nice bounce.
   if (isSwitching) {
       modal.classList.add("switching");
   } else {
       modal.classList.remove("switching");
+      // Reset animation for fresh open
       const inner = modal.querySelector(".modal");
       if (inner) {
           inner.style.animation = "none";
-          void inner.offsetHeight;
+          void inner.offsetHeight; // force reflow
           inner.style.animation = "";
       }
   }
 
   if (typeof vibrate === "function") vibrate([15]);
 
+  // Update Nav Highlights
   if (typeof updateNavHighlight === 'function') {
       if (modalId === 'monthlyModal') updateNavHighlight('navMonthlyBtn');
       if (modalId === 'clientsModal') updateNavHighlight('navClientsBtn');
@@ -2750,10 +2293,14 @@ window.closeReceiptModal = function() {
     }
 }
 
+
+/* Fixed: Removes inline styles so Day Mode works correctly */
+
 window.openActionModal = function(action, loanId) {
   const modal = el("actionModal");
   if (!modal) return;
 
+  // Set global state
   currentAction = action;
   currentLoanId = loanId;
 
@@ -2763,25 +2310,22 @@ window.openActionModal = function(action, loanId) {
   const helperEl = el("actionModalHelper");
   const confirmBtn = el("actionModalConfirmBtn");
 
-  // Reset any custom styles we might have added previously (like the purple top-up button)
-  if (confirmBtn) {
-    confirmBtn.style.background = "";
-    confirmBtn.style.borderColor = "";
-  }
-
   const loan = (state.loans || []).find(l => String(l.id) === String(loanId));
   const today = new Date().toISOString().split("T")[0];
 
   try { if (loan) computeDerivedFields(loan); } catch(e) {}
 
+  // Reset UI
   if (subEl) subEl.textContent = "";
   if (helperEl) helperEl.textContent = "";
   if (bodyEl) bodyEl.innerHTML = "";
 
+  // Standard component: Note History Viewer
   const getNoteHistoryHtml = () => loan?.notes ? `
     <div style="background:rgba(0,0,0,0.15); padding:12px; border-radius:8px; font-size:0.85rem; color:var(--text-main); max-height:120px; overflow-y:auto; white-space:pre-wrap; border: 1px solid var(--border); font-family: monospace; line-height: 1.4;">${escapeHTML(loan.notes)}</div>
   ` : `<div style="font-size:0.82rem; color:var(--text-muted); font-style:italic; padding: 10px; text-align: center; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed var(--border);">There are no notes for this loan.</div>`;
 
+  // Helper to create consistent rows
   const makeRow = (label, innerHtml) => `
     <div style="display:flex; flex-direction:column; gap:8px; margin:10px 0;">
       <div style="font-size:.78rem; letter-spacing:.12em; text-transform:uppercase; font-weight:800; color:var(--primary); opacity:.9;">${label}</div>
@@ -2800,6 +2344,7 @@ window.openActionModal = function(action, loanId) {
 
     const balanceVal = loan ? Number(loan.balance || 0).toFixed(2) : "";
 
+    // SMART UPDATE: Included Note History in Payment window for better context
     const body = [
       makeRow("Loan History Context", getNoteHistoryHtml()),
       makeRow("Payment Amount", `<input id="actAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="${balanceVal}">`),
@@ -2840,33 +2385,14 @@ window.openActionModal = function(action, loanId) {
 
     if (bodyEl) bodyEl.innerHTML = body;
     if (helperEl) helperEl.textContent = "Note: This will close the loan and record a total loss in the capital ledger.";
-
-  } else if (action === "TOPUP") {
-    if (titleEl) titleEl.textContent = "Top-Up / Refinance";
-    if (subEl && loan) subEl.textContent = `Loan #${loan.id} • ${loan.clientName}`;
-
-    if (confirmBtn) {
-      confirmBtn.textContent = "Confirm Top-Up";
-      confirmBtn.className = "btn btn-primary";
-      confirmBtn.style.background = "#a855f7"; // Subtle purple to differentiate
-      confirmBtn.style.borderColor = "#a855f7";
-    }
-
-    const body = [
-      makeRow("Current Principal", `<div style="font-size:1.2rem; font-weight:bold; color:var(--text-main);">${formatMoney(loan.amount)}</div>`),
-      makeRow("Additional Amount (K)", `<input id="actAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 500">`),
-      makeRow("New Start Date", `<div style="color:var(--primary); font-weight:bold;">${today} (Cycle resets today)</div>`),
-      makeRow("Override Note (Optional)", `<textarea id="actNote" rows="2" placeholder="e.g. Added 500, collateral still covers it..."></textarea>`)
-    ].join("");
-
-    if (bodyEl) bodyEl.innerHTML = body;
-    if (helperEl) helperEl.textContent = "Note: This adds to the principal, resets the start date to today, recalculates interest, and automatically extends the due date.";
   }
 
+  // ⚡ Z-INDEX ENFORCEMENT: Ensure it pops to the front
   modal.style.display = "flex";
   modal.style.setProperty("z-index", "100060", "important");
   modal.classList.remove("modal-hidden");
 
+  // Force re-animation
   const inner = modal.querySelector(".modal");
   if (inner) {
     inner.style.animation = "none";
@@ -2875,8 +2401,8 @@ window.openActionModal = function(action, loanId) {
   }
 
   setTimeout(() => {
-    // Focus actAmount for both PAY and TOPUP
-    const input = (action === "PAY" || action === "TOPUP") ? el("actAmount") : el("actNote");
+    // Smart Focus: If paying, focus amount. Otherwise focus textarea.
+    const input = action === "PAY" ? el("actAmount") : el("actNote");
     if (input) input.focus();
   }, 100);
 
@@ -2884,6 +2410,7 @@ window.openActionModal = function(action, loanId) {
 };
 
 
+// FIX: New function to properly close the Repayment/Action window
 window.closeActionModal = function() {
     const am = document.getElementById("actionModal");
     if(am) {
@@ -2897,25 +2424,13 @@ window.closeActionModal = function() {
 function toggleProfileSidebar() {
   const sb = document.getElementById("profileSidebar");
   const ov = document.getElementById("profileOverlay");
-  if (!sb || !ov) return;
-
-  const isOpen = sb.classList.contains("open");
-
-  if (isOpen) {
+  if (sb.classList.contains("open")) {
     sb.classList.remove("open");
     ov.classList.add("hidden");
-    document.body.classList.remove("sidebar-open");
-    sb.setAttribute("aria-hidden", "true");
   } else {
-    // Close other transient UI
-    document.getElementById("notifDropdown")?.classList.remove("show");
-
+    sb.classList.add("open");
     ov.classList.remove("hidden");
-    // Use rAF to ensure overlay becomes visible before we animate the sidebar
-    requestAnimationFrame(() => sb.classList.add("open"));
-
-    document.body.classList.add("sidebar-open");
-    sb.setAttribute("aria-hidden", "false");
+    document.getElementById("notifDropdown")?.classList.remove("show");
   }
 }
 
@@ -2944,6 +2459,7 @@ document.addEventListener("click", function(event) {
 
 
 function setupMobileUX() {
+  // 1. Android/Chrome Install Prompt
   let deferredPrompt;
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -2964,8 +2480,9 @@ function setupMobileUX() {
     }
   });
 
+  // 2. Long-Press on Loan Row (Quick Pay) with Jitter Tolerance
   let longPressTimer;
-  const touchDuration = 800;
+  const touchDuration = 800; // 0.8 seconds
   let startX = 0;
   let startY = 0;
 
@@ -2973,11 +2490,13 @@ function setupMobileUX() {
     const row = e.target.closest("tr");
     if (!row) return;
 
+    // FIX: Read ID from the robust data attribute
     const rawId = row.getAttribute("data-loan-id");
     if (!rawId) return;
 
     const loanId = parseInt(rawId);
 
+    // Track touch start position
     if (e.touches && e.touches[0]) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
@@ -2985,12 +2504,13 @@ function setupMobileUX() {
 
     if (loanId) {
       longPressTimer = setTimeout(() => {
-        if(typeof vibrate === "function") vibrate([40, 40]);
+        if(typeof vibrate === "function") vibrate([40, 40]); // Double buzz feedback
         openActionModal("PAY", loanId);
       }, touchDuration);
     }
   }, { passive: true });
 
+  // Handle movement (allow small jitter of 10px)
   document.addEventListener("touchmove", (e) => {
       if (!longPressTimer) return;
 
@@ -2998,9 +2518,11 @@ function setupMobileUX() {
           const moveX = e.touches[0].clientX;
           const moveY = e.touches[0].clientY;
 
+          // Calculate distance moved
           const diffX = Math.abs(moveX - startX);
           const diffY = Math.abs(moveY - startY);
 
+          // If moved more than 10px, it's a scroll -> cancel timer
           if (diffX > 10 || diffY > 10) {
               clearTimeout(longPressTimer);
               longPressTimer = null;
@@ -3013,6 +2535,7 @@ function setupMobileUX() {
   document.addEventListener("touchend", () => clearTimeout(longPressTimer));
   document.addEventListener("touchcancel", () => clearTimeout(longPressTimer));
 
+  // 3. iOS Install Modal Logic
   function checkIosInstall() {
     const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
     const isStandalone = window.navigator.standalone === true;
@@ -3024,7 +2547,7 @@ function setupMobileUX() {
             modal.style.display = "flex";
             setTimeout(() => modal.classList.remove("modal-hidden"), 10);
         }
-      }, 3000);
+      }, 3000); // Delayed slightly to be less intrusive
     }
   }
 
@@ -3172,17 +2695,22 @@ function updateWizard(direction = "next") {
   el("modalNextBtn").textContent = wizardStep === LOAN_STEPS.length - 1 ? "Finish & Save" : "Next →";
 }
 
+/* admin/app.js - saveNewLoan (With Admin Tracking Fix) */
+
 function saveNewLoan() {
   const draft = wizardDraft;
-  const newId = generateLoanId();
+  const newId = generateLoanId(); // Use the safe generator
 
+  // 1. Get Current Admin Details (The Fix)
   let creatorName = "Admin";
   let creatorEmail = "system@stallz";
 
   if (state.currentUserProfile) {
+      // Use profile name if available
       creatorName = state.currentUserProfile.name || state.currentUserProfile.firstname || "Admin";
       creatorEmail = state.currentUserProfile.email || "";
   } else if (state.user) {
+      // Fallback to auth user email
       creatorEmail = state.user.email;
       creatorName = state.user.email.split('@')[0].toUpperCase();
   }
@@ -3204,30 +2732,58 @@ function saveNewLoan() {
     profitCollected: 0,
     isDefaulted: false,
     clientUid: null,
+
+    // ✅ ADDED: Track who created this loan
     createdBy: creatorName,
     createdEmail: creatorEmail,
+
     createdAt: new Date().toISOString()
   };
 
+  // 2. Update Local State
   if (!state.loans) state.loans = [];
   state.loans.unshift(newLoan);
   computeDerivedFields(newLoan);
 
+  // 3. ATOMIC CLOUD SAVE (schema-aware: supports legacy array & object nodes)
   if (!OFFLINE_TEST_MODE && dataRef) {
     try {
-      // ✅ Object-based push (scales + prevents array transaction collisions)
-      const loanKey = String(newId);
-      newLoan.__loanPath = `loans/${loanKey}`;
-      newLoan.__primaryLoanPath = newLoan.__loanPath;
+      const loansShape = state.__loansContainerType || "array";
+      // If legacy is an array, append via transaction to avoid creating mixed-key duplicates.
+      if (loansShape === "array") {
+        dataRef.child("loans").transaction((current) => {
+          let arr = current;
+          if (Array.isArray(arr)) {
+            // ok
+          } else if (arr && typeof arr === "object") {
+            // If it already became an object (numeric keys), normalize to a compact array
+            arr = Object.values(arr).filter(v => v && typeof v === "object");
+          } else {
+            arr = [];
+          }
+          arr.push(newLoan);
+          return arr;
+        }, (error, committed) => {
+          if (error || !committed) {
+            showToast("Cloud Sync Failed", "error");
+            return;
+          }
+          showToast("Loan Created!", "success");
+          if (newLoan.clientUid) syncSingleLoanToClient(newLoan);
+        }, false);
+      } else {
+        // Object map mode: safe to write by id
+        newLoan.__loanPath = `loans/${newId}`;
+        newLoan.__primaryLoanPath = newLoan.__loanPath;
 
-      const updates = {};
-      updates[`loans/${loanKey}`] = newLoan;
+        const updates = {};
+        updates[`loans/${newId}`] = newLoan;
 
-      dataRef.update(updates).then(() => {
-        showToast("Loan Created!", "success");
-        if (newLoan.clientUid) syncSingleLoanToClient(newLoan);
-      }).catch(() => showToast("Cloud Sync Failed", "error"));
-
+        dataRef.update(updates).then(() => {
+          showToast("Loan Created!", "success");
+          if (newLoan.clientUid) syncSingleLoanToClient(newLoan);
+        }).catch(() => showToast("Cloud Sync Failed", "error"));
+      }
     } catch (e) {
       console.error(e);
       showToast("Cloud Sync Failed", "error");
@@ -3235,8 +2791,6 @@ function saveNewLoan() {
   } else {
     saveState();
   }
-
-
 
   closePopup("loanModal");
   refreshUI();
@@ -3263,7 +2817,7 @@ function handleWizardNext() {
 
       const loanMatch = (state.loans || [])
           .filter(l => l.clientName && l.clientName.toLowerCase() === lowerName)
-          .sort((a, b) => (Date.parse(b.createdAt || b.updatedAt || '') || 0) - (Date.parse(a.createdAt || a.updatedAt || '') || 0))[0];
+          .sort((a, b) => (Number(b.id)||0) - (Number(a.id)||0))[0];
 
       if (loanMatch && loanMatch.clientPhone) foundPhone = loanMatch.clientPhone;
 
@@ -3299,13 +2853,15 @@ function handleWizardBack() {
  * 10.0 | APP INITIALIZATION
  * ============================================================================ */
 
+// ==========================================
+// ROBUST ADMIN LOGOUT LOGIC (Custom UI)
+// ==========================================
 window.triggerAdminLogout = function(e) {
     if (e) e.preventDefault();
     const sidebar = document.getElementById("profileSidebar");
     const overlay = document.getElementById("profileOverlay");
     if (sidebar) sidebar.classList.remove("open");
     if (overlay) overlay.classList.add("hidden");
-    document.body.classList.remove("sidebar-open");
 
     showAdminDialog({
         title: 'Log Out',
@@ -3328,13 +2884,12 @@ window.triggerAdminLogout = function(e) {
 };
 
 function init() {
-  try { window.StallzShared?.enableNoBackNavigation?.(); } catch(e) {}
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('action') === 'new_loan') {
     setTimeout(() => document.getElementById("openLoanModalBtn")?.click(), 600);
     switchOverviewTab('dashboard');
   } else {
-    setTimeout(() => switchOverviewTab('dashboard'), 10);
+    setTimeout(() => switchOverviewTab('dashboard'), 100);
   }
 
   document.getElementById("profileToggleBtn")?.addEventListener("click", toggleProfileSidebar);
@@ -3343,27 +2898,17 @@ function init() {
   document.getElementById("notifBtn")?.addEventListener("click", toggleNotifications);
 
   document.getElementById("themeToggle")?.addEventListener("change", (e) => {
-    // Add nice mechanical switch vibration (double click feel)
-    try {
-        if (typeof vibrate === "function") vibrate([15, 30, 20]);
-        else if (navigator.vibrate) navigator.vibrate([15, 30, 20]);
-    } catch(err) {}
-
     localStorage.setItem("stallz_theme_preference", e.target.checked ? "dark" : "light");
     checkTimeBasedTheme();
   });
 
-  const sess = window.StallzAuth?.getSession?.();
-  if (sess && sess.expiresAt && (Date.now() > sess.expiresAt)) {
-    try { window.StallzAuth?.signOut?.(); } catch(e) {}
-    try { localStorage.removeItem("stallz_last_active"); } catch(e) {}
-    try { localStorage.removeItem("stallz_test_session"); } catch(e) {}
+  const lastActive = localStorage.getItem("stallz_last_active");
+  if (lastActive && (Date.now() - lastActive > 30 * 60 * 1000)) {
+    window.StallzAuth?.signOut?.();
+    localStorage.removeItem("stallz_last_active");
     location.replace("../index.html");
     return;
   }
-
-  // arm auto logout timer for this session
-  try { window.StallzAuth?.enforceSessionTTL?.(); } catch(e) {}
 
   document.getElementById("openLoanModalBtn")?.addEventListener("click", () => {
     if (!state.dataLoaded && !OFFLINE_TEST_MODE) return showToast("Please wait, loading data...", "error");
@@ -3386,13 +2931,13 @@ function init() {
   document.getElementById("modalBackBtn")?.addEventListener("click", () => { vibrate([10]); handleWizardBack(); });
   document.getElementById("finalConfirmBtn")?.addEventListener("click", () => { vibrate([20]); closePopup("loanConfirmationModal"); saveNewLoan(); });
 
+  // Action Modal Confirmation Listener
   document.getElementById("actionModalConfirmBtn")?.addEventListener("click", async () => {
     vibrate([20]);
     const loan = (state.loans || []).find(l => String(l.id) === String(currentLoanId));
     if (!loan) return showToast("Loan not found.", "error");
 
     const updates = {};
-    const rootUpdates = {}; // root-level writes (clients/*, stallzShared_v1/*)
     const now = new Date().toISOString();
     let __newRepaymentForClient = null;
     let __newRepaymentIdForClient = null;
@@ -3440,7 +2985,7 @@ function init() {
       if (uid) {
           const notifId = "n_" + Date.now();
           const isFull = loan.balance <= 0.01;
-          rootUpdates[`clients/${uid}/notifications/${notifId}`] = { id: notifId, title: isFull ? "🎉 Loan Fully Paid!" : "💰 Payment Received", body: isFull ? `Congratulations! Your loan of K${loan.amount} is fully settled.` : `We received your payment of K${safeAmt}. Remaining balance: K${loan.balance}`, read: false, createdAt: now, type: "PAYMENT" };
+          updates[`clients/${uid}/notifications/${notifId}`] = { id: notifId, title: isFull ? "🎉 Loan Fully Paid!" : "💰 Payment Received", body: isFull ? `Congratulations! Your loan of K${loan.amount} is fully settled.` : `We received your payment of K${safeAmt}. Remaining balance: K${loan.balance}`, read: false, createdAt: now, type: "PAYMENT" };
       }
 
       applyLoanUpdates(loan, updates, true);
@@ -3450,117 +2995,24 @@ function init() {
       const newNote = String(document.getElementById("actNote")?.value || "").trim();
       if (!newNote) return showToast("Write a note first.", "error");
 
+      // Stamp it with the Date and the Admin's Name
       const adminName = state.currentUserProfile?.name?.split(' ')[0] || state.user?.email?.split('@')[0] || "Admin";
       const timestamp = new Date().toLocaleDateString('en-ZM', {day:'numeric', month:'short'}) + " " + new Date().toLocaleTimeString('en-ZM', {hour:'2-digit', minute:'2-digit'});
       const formattedEntry = `[${timestamp} - ${adminName}]: ${newNote}`;
 
+      // Append it to the history instead of overwriting
       loan.notes = loan.notes ? (loan.notes + "\n\n" + formattedEntry) : formattedEntry;
       loan.updatedAt = now;
 
       try { computeDerivedFields(loan); } catch(e) {}
       applyLoanUpdates(loan, updates, true);
 
-       // Notify client about the new note (in-app + push via Cloud Function)
-       try {
-         const uid = resolveClientUidFromPhone();
-         if (uid) {
-           const notifId = "n_" + Date.now();
-           const preview = (newNote.length > 140) ? (newNote.slice(0, 137) + "...") : newNote;
-           rootUpdates[`clients/${uid}/notifications/${notifId}`] = {
-             id: notifId,
-             title: "📝 Loan Note Added",
-             body: preview,
-             read: false,
-             createdAt: now,
-             type: "NOTE",
-             meta: { loanId: loan.id }
-           };
-         }
-       } catch(e) { console.warn('NOTE notification failed:', e); }
-
-
     } else if (currentAction === "WRITEOFF") {
       const reason = String(document.getElementById("actNote")?.value || "").trim();
       if (!reason) return showToast("Please enter a reason for the write-off.", "error");
-
-      loan.isDefaulted = true;
-      loan.status = "DEFAULTED";
-      loan.notes = (loan.notes ? loan.notes + "\n" : "") + "[Write-Off]: " + reason;
-      loan.updatedAt = now;
-
+      loan.isDefaulted = true; loan.status = "DEFAULTED"; loan.notes = (loan.notes ? loan.notes + "\n" : "") + "[Write-Off]: " + reason; loan.updatedAt = now;
       try { computeDerivedFields(loan); } catch(e) {}
       applyLoanUpdates(loan, updates, true);
-
-       // Notify client about write-off / default status
-       try {
-         const uid = resolveClientUidFromPhone();
-         if (uid) {
-           const notifId = "n_" + Date.now();
-           const preview = (reason.length > 160) ? (reason.slice(0, 157) + "...") : reason;
-           rootUpdates[`clients/${uid}/notifications/${notifId}`] = {
-             id: notifId,
-             title: "⚠️ Loan Marked Defaulted",
-             body: `Reason: ${preview}`,
-             read: false,
-             createdAt: now,
-             type: "DEFAULTED",
-             meta: { loanId: loan.id }
-           };
-         }
-       } catch(e) { console.warn('WRITEOFF notification failed:', e); }
-
-
-      const unrecoveredPrincipal = Math.max(0, loan.amount - loan.paid);
-      if (unrecoveredPrincipal > 0) {
-          const lossExpId = Date.now() + Math.floor(Math.random() * 100);
-          const lossExp = {
-              id: lossExpId,
-              amount: unrecoveredPrincipal,
-              date: now.split("T")[0],
-              category: "Other",
-              note: `📉 BAD DEBT LOSS: Unrecovered principal for Loan #${loan.id} (${loan.clientName}). Reason: ${reason}`,
-              recordedBy: "System (Auto-Write-Off)"
-          };
-          updates[`expenses/${lossExpId}`] = lossExp;
-          if (!state.expenses) state.expenses = [];
-          state.expenses.unshift(lossExp);
-      }
-    } else if (currentAction === "TOPUP") {
-      const extraAmt = Number(document.getElementById("actAmount")?.value || 0);
-      if (extraAmt <= 0) return showToast("Enter a valid top-up amount.", "error");
-
-      const customNote = String(document.getElementById("actNote")?.value || "").trim();
-      const adminName = state.currentUserProfile?.name?.split(' ')[0] || state.user?.email?.split('@')[0] || "Admin";
-
-      const oldAmount = loan.amount;
-      const newAmount = oldAmount + extraAmt;
-
-      // Core Reset Logic
-      loan.amount = newAmount;
-      loan.startDate = now.split("T")[0]; // Reset start date
-      loan.dueDate = null; // 🚨 Forcing null makes computeDerivedFields automatically extend it based on the plan!
-      loan.status = "ACTIVE"; // Bring back from OVERDUE if they are refinancing
-      loan.isDefaulted = false;
-
-      const autoNote = `[Top-Up ${now.split("T")[0]} - ${adminName}]: Added K${extraAmt}. Principal: K${oldAmount} ➔ K${newAmount}. ${customNote}`;
-      loan.notes = loan.notes ? (loan.notes + "\n\n" + autoNote) : autoNote;
-      loan.updatedAt = now;
-
-      try { computeDerivedFields(loan); } catch(e) {}
-      applyLoanUpdates(loan, updates, true);
-
-      const uid = resolveClientUidFromPhone();
-      if (uid) {
-          const notifId = "n_" + Date.now();
-          rootUpdates[`clients/${uid}/notifications/${notifId}`] = {
-              id: notifId,
-              title: "⬆️ Loan Refinanced",
-              body: `Your loan was topped up by K${extraAmt}. Your due date has been successfully extended!`,
-              read: false,
-              createdAt: now,
-              type: "UPDATE"
-          };
-      }
     }
 
     if (Object.keys(updates).length === 0) return showToast("Nothing to save.", "error");
@@ -3568,10 +3020,6 @@ function init() {
     if (!OFFLINE_TEST_MODE && dataRef) {
       try {
         await dataRef.update(updates);
-         // Root-level side effects (client notifications, etc.)
-         if (Object.keys(rootUpdates).length) {
-           await firebase.database().ref().update(rootUpdates).catch((e)=>console.warn('Root updates failed:', e));
-         }
         if (window.StallzShared?.syncAdminSnapshot) window.StallzShared.syncAdminSnapshot(state.loans);
         const uid = resolveClientUidFromPhone();
         if (uid) {
@@ -3697,66 +3145,10 @@ function init() {
     }
   } catch(e){}
 
-  // Push Notifications (Admin)
-  try {
-    const btn = document.getElementById('enableAdminPushBtn');
-    const pill = document.getElementById('adminPushStatePill');
-
-    const paint = (on) => {
-      if (!pill) return;
-      pill.textContent = on ? 'On' : 'Off';
-      pill.classList.toggle('on', !!on);
-      pill.classList.toggle('off', !on);
-      const sub = document.getElementById('adminNotifSub');
-      if (sub) sub.textContent = on ? 'Device alerts are enabled' : 'Tap to enable device alerts';
-    };
-
-    paint(typeof Notification !== 'undefined' && Notification.permission === 'granted');
-
-    // If permission is already granted, silently ensure token exists
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      window.StallzPush?.initPushNotifications?.({ forcePrompt: false }).then((ok) => paint(!!ok));
-    }
-
-    if (btn && !btn.__stallzBound) {
-      btn.__stallzBound = true;
-      btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        // If already enabled, do nothing
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          paint(true);
-          return;
-        }
-
-        const ok = await window.StallzPush?.initPushNotifications?.({ forcePrompt: true });
-        paint(!!ok);
-        if (ok) showToast('Notifications enabled on this device', 'success');
-        else showToast('Notifications not enabled', 'error');
-      });
-    }
-  } catch(e) {}
-
   setTimeout(() => { if (typeof runSmartEngagementEngine === 'function') runSmartEngagementEngine(); }, 8000);
 }
 
-// 🚀 INSTANT CACHE HYDRATION
-// Because this script is at the bottom of the body, this executes synchronously
-// before the browser paints the screen, resulting in a true 0ms layout render.
-try {
-    if (!OFFLINE_TEST_MODE) {
-        const cachedData = localStorage.getItem("stallz_admin_data_cache");
-        if (cachedData) {
-            applyData(JSON.parse(cachedData), true);
-            // Also update header name instantly from cache
-            updateWelcomeUI();
-        }
-    }
-} catch(e) {
-    console.warn("Instant hydration failed:", e);
-}
-
 document.addEventListener("DOMContentLoaded", init);
-
 /* ============================================================================
  * 12.0 | SHARED SYSTEM WIRING (Client ↔ Admin)
  * ============================================================================ */
@@ -3770,8 +3162,10 @@ window.openLoanRequestModal = function(requestId) {
     const body = document.getElementById("loanRequestBody");
     if (!m || !body) return;
 
+    // Force display flex to override the inline 'display: none' from HTML
     m.style.display = "flex";
 
+    // THE FIX: First check active requests, then fallback to the historical log cache
     let req = window.StallzShared?.getLoanRequest?.(requestId);
     if (!req && typeof __allRequestsCache !== 'undefined') {
         req = __allRequestsCache.find(r => String(r.id) === String(requestId));
@@ -3809,12 +3203,6 @@ window.openLoanRequestModal = function(requestId) {
             <div><strong>Collateral Value:</strong> ${formatMoney(req.collateralValue || 0)}</div>
         </div>
 
-        <div style="margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-            <div style="font-weight:800; color: var(--primary); margin-bottom: 6px;">NEGOTIATED RATE (OPTIONAL)</div>
-            <input type="number" id="approveCustomInterest" placeholder="Enter % (e.g. 15)" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.9rem;" autocomplete="off" min="0" step="1">
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">Leave blank to use the standard ${escapeHTML(req.plan || "-")} rate.</div>
-        </div>
-
         ${(req.nrcFrontUrl || req.nrcBackUrl) ? `
           <div style="display:grid; gap:8px; padding-top:6px;">
             <div style="font-weight:800;">NRC DOCUMENTATION</div>
@@ -3846,6 +3234,7 @@ window.closeLoanRequestModal = function(){
   const m = document.getElementById("loanRequestModal");
   if (m) {
       m.classList.add("modal-hidden");
+      // FIX: Re-apply display none to ensure it stays hidden
       setTimeout(() => { m.style.display = "none"; }, 300);
   }
   __activeLoanRequestId = null;
@@ -3855,6 +3244,7 @@ window.closeLoanRequestModal = function(){
 window.approveLoanRequest = async function(){
   if (!__activeLoanRequestId) return;
 
+  // ⚡ FIX 1: Cache the ID and instantly clear the global variable to prevent double-clicks
   const processingId = __activeLoanRequestId;
   __activeLoanRequestId = null;
 
@@ -3867,15 +3257,19 @@ window.approveLoanRequest = async function(){
       return;
     }
 
+    // 1) Mark request approved + notify client
     await window.StallzShared?.approveLoanRequest?.(
       sess?.uid || 'admin',
       String(req.id)
     );
 
+    // 2) Create a real loan record
     const newId = Date.now();
 
+    // ⚡ Robustly grab the UID (Handles cases where it's stored as 'uid' instead of 'clientUid')
     let exactUid = req.clientUid || req.uid || req.userId || req.clientId || null;
 
+    // Failsafe: If UID is still missing, try to match by phone number
     if (!exactUid && req.clientPhone) {
         const cleanPhone = String(req.clientPhone).replace(/\D/g, "").replace(/^0/, "260");
         const users = window.StallzShared?.listUsers?.("client") || [];
@@ -3885,9 +3279,7 @@ window.approveLoanRequest = async function(){
 
     const profile = window.StallzShared?.getUser?.(exactUid) || {};
 
-    const customRateInput = document.getElementById("approveCustomInterest");
-    const customInterestVal = (customRateInput && customRateInput.value.trim() !== "") ? Number(customRateInput.value) : null;
-
+    // ⚡ FIX 2: Track who approved this loan for Commission & Admin Profile stats
     let creatorName = "Admin";
     let creatorEmail = "system@stallz";
     if (state.currentUserProfile) {
@@ -3905,7 +3297,7 @@ window.approveLoanRequest = async function(){
       clientPhone: String(req.clientPhone || profile.phone || "").trim(),
       amount: Number(req.amount || 0),
       plan: String(req.plan || "Weekly"),
-      customInterest: customInterestVal,
+      customInterest: null,
       collateralItem: String(req.collateralItem || "").trim(),
       collateralValue: Number(req.collateralValue || 0),
       startDate: toDateOnly(new Date()),
@@ -3916,8 +3308,8 @@ window.approveLoanRequest = async function(){
       profitCollected: 0,
       isDefaulted: false,
       requestId: req.id,
-      createdBy: creatorName,
-      createdEmail: creatorEmail,
+      createdBy: creatorName,      // Ensures the admin gets credit
+      createdEmail: creatorEmail,  // Ensures the admin gets credit
       createdAt: new Date().toISOString()
     };
 
@@ -3926,12 +3318,15 @@ window.approveLoanRequest = async function(){
     computeDerivedFields(newLoan);
 
     if (!OFFLINE_TEST_MODE && dataRef) {
+      // ATOMIC multi-path write
       const rootUpdates = {};
       rootUpdates[`loanManagerData_v5/loans/${newId}`] = newLoan;
 
+      // ⚡ Push to client's secure node using the robust UID
       if (newLoan.clientUid) {
         rootUpdates[`clients/${newLoan.clientUid}/loans/${newId}`] = newLoan;
 
+        // 🟢 NEW: APPROVAL NOTIFICATION TRIGGER
         const notifId = "n_" + Date.now();
         rootUpdates[`clients/${newLoan.clientUid}/notifications/${notifId}`] = {
             id: notifId,
@@ -3956,6 +3351,7 @@ window.approveLoanRequest = async function(){
   } catch(e){
     console.error(e);
     showToast("Approve failed", "error");
+    // Restore the ID so the admin can try clicking the button again if their internet dropped
     __activeLoanRequestId = processingId;
   }
 }
@@ -3963,6 +3359,7 @@ window.approveLoanRequest = async function(){
 window.rejectLoanRequest = async function(){
   if (!__activeLoanRequestId) return;
 
+  // Find the user's UID so we know whose phone to ping
   const req = window.StallzShared?.getLoanRequest?.(String(__activeLoanRequestId));
   const uid = req ? (req.clientUid || req.uid || req.userId) : null;
 
@@ -3982,6 +3379,7 @@ window.rejectLoanRequest = async function(){
                 String(reason).trim()
             );
 
+            // 🟢 NEW: REJECTION NOTIFICATION TRIGGER
             if (uid) {
                 const notifId = "n_" + Date.now();
                 await firebase.database().ref(`clients/${uid}/notifications/${notifId}`).set({
@@ -4015,6 +3413,7 @@ window.openAdminMessageModal = function(clientUid){
 
     if (!m || !thread) return;
 
+    // FIX: Force display flex to override the inline 'display: none'
     m.style.display = "flex";
     m.classList.remove("modal-hidden");
 
@@ -4029,6 +3428,7 @@ window.closeAdminMessageModal = function(){
   const m = document.getElementById("adminMessageModal");
   if (m) {
       m.classList.add("modal-hidden");
+      // FIX: Re-apply display none to ensure it stays hidden
       setTimeout(() => { m.style.display = "none"; }, 300);
   }
   __activeClientUidForMsg = null;
@@ -4065,6 +3465,7 @@ window.sendAdminMessage = async function(){
   try {
     const sess = window.StallzAuth?.getSession?.();
 
+    // 1. Send to chat thread
     await window.StallzShared?.sendMessage?.({
       clientUid: __activeClientUidForMsg,
       fromUid: sess?.uid || state.user?.uid || "admin",
@@ -4072,6 +3473,7 @@ window.sendAdminMessage = async function(){
       text
     });
 
+    // 2. 🟢 NEW: CHAT NOTIFICATION TRIGGER (Rings their phone!)
     const notifId = "n_" + Date.now();
     await firebase.database().ref(`clients/${__activeClientUidForMsg}/notifications/${notifId}`).set({
         id: notifId,
@@ -4096,6 +3498,11 @@ window.sendAdminMessage = async function(){
  * ============================================================================ */
 let __lastDistribute = 0;
 
+/**
+ * Immediate secure sync for a SINGLE loan into:
+ *   clients/{uid}/loans/{loanId}
+ * This avoids relying on the 10s bulk-sync rate limit.
+ */
 function syncSingleLoanToClient(loan) {
   try {
     if (!loan || !loan.clientUid) return Promise.resolve();
@@ -4113,6 +3520,7 @@ function syncSingleLoanToClient(loan) {
 }
 
 function distributeLoansToClients(allLoans, force = false) {
+  // Rate Limit: Only run this heavy sync every 10 seconds max (unless forced)
   const now = Date.now();
   if (!force && now - __lastDistribute < 10000) return;
   __lastDistribute = now;
@@ -4122,25 +3530,227 @@ function distributeLoansToClients(allLoans, force = false) {
   const updates = {};
   let count = 0;
 
+  // 1. Group loans by Client UID
   allLoans.forEach(loan => {
     if (loan.clientUid) {
+      // Write to: clients/{uid}/loans/{loanId}
+      // This is the ONLY place the Client is allowed to read now.
       updates[`clients/${loan.clientUid}/loans/${loan.id}`] = loan;
       count++;
     }
   });
 
+  // 2. Perform the update if there is data
   if (count > 0) {
+    // We use the root ref to update multiple client paths at once
     firebase.database().ref().update(updates)
       .catch(e => console.warn("Sync Distribute Warning:", e));
   }
 }
 
 /* ============================================================================
+   13.0 | ADMIN PROFILE & COMMISSION LOGIC
+   ============================================================================ */
+
+/**
+ * Calculates commission with the "Penalty Logic"
+ * Standard: 20% of Profit
+ * Penalty: If Actual Rate < Standard Rate, Commission drops by same %
+ */
+function calculateLoanCommission(loan) {
+    // 1. Determine Standard Rate for this Plan
+    const stdRate = INTEREST_BY_PLAN[loan.plan] || 0.40; // Default to 40% if unknown
+
+    // 2. Determine Actual Rate Given
+    const actualRate = (loan.customInterest !== undefined && loan.customInterest !== null)
+                       ? (Number(loan.customInterest) / 100)
+                       : stdRate;
+
+    // 3. Calculate Profit (Interest portion of Total Due)
+    const principal = Number(loan.amount || 0);
+    const totalDue = Number(loan.totalDue || 0);
+    const profit = Math.max(0, totalDue - principal);
+
+    // 4. Calculate Penalty Factor
+    let reductionFactor = 0;
+
+    if (actualRate < stdRate && stdRate > 0) {
+        reductionFactor = (stdRate - actualRate) / stdRate;
+    }
+
+    // 5. Calculate Final Commission Rate
+    // ✅ CHANGED: Base is now 20% (0.20)
+    const BASE_COMMISSION = 0.20;
+    let finalCommRate = BASE_COMMISSION * (1 - reductionFactor);
+
+    // Safety: Cap at 20% (No bonus for over-charging) and min 0%
+    finalCommRate = Math.max(0, Math.min(BASE_COMMISSION, finalCommRate));
+
+    // 6. Calculate Amount
+    const commissionAmount = Number((profit * finalCommRate).toFixed(2));
+
+    return {
+        profit: profit,
+        stdRate: stdRate,
+        actualRate: actualRate,
+        commRate: finalCommRate,
+        amount: commissionAmount,
+        isPenalized: reductionFactor > 0.01 // True if dropped by >1%
+    };
+}
+
+window.openAdminProfile = function(identifier) {
+    // 1. ✅ CLOSE SIDEBAR IMMEDIATELY
+    const sidebar = document.getElementById("profileSidebar");
+    const overlay = document.getElementById("profileOverlay");
+    if (sidebar) sidebar.classList.remove("open");
+    if (overlay) overlay.classList.add("hidden");
+
+    // 2. Find the Admin Data
+    const admin = state.admins.find(a =>
+        String(a.uid) === String(identifier) ||
+        String(a.email) === String(identifier)
+    );
+
+    if (!admin) {
+        showToast("Admin profile not found", "error");
+        return;
+    }
+
+    // 3. Check Permissions (The "Prince" Exclusion)
+    const nameLower = (admin.name || "").toLowerCase();
+    const emailLower = (admin.email || "").toLowerCase();
+
+    const isOwner = nameLower.includes("prince") ||
+                    nameLower.includes("kasininga") ||
+                    emailLower.includes("prince");
+
+    // 4. Populate Header
+    const initials = getInitials(admin.name);
+    const elAvatar = document.getElementById("apAvatar");
+    elAvatar.textContent = initials;
+    const colorIdx = (admin.name.length) % 5;
+    elAvatar.className = `avatar avatar-${colorIdx}`;
+
+    document.getElementById("apName").textContent = admin.name;
+    document.getElementById("apRole").textContent = (admin.role || "Admin").toUpperCase();
+    document.getElementById("apContact").textContent = admin.email || admin.phone || "";
+
+    // 5. Find Associated Loans
+    const adminLoans = state.loans.filter(l => {
+        const byName = l.createdBy && l.createdBy.toLowerCase() === nameLower;
+        const byEmail = l.createdEmail && l.createdEmail.toLowerCase() === emailLower;
+        const legacyNyambi = nameLower.includes("nyambi") && l.createdBy === "NYAMBI SITALEKA";
+
+        return byName || byEmail || legacyNyambi;
+    });
+
+    // 6. Render "Activity" Tab
+    document.getElementById("apLoansCount").textContent = adminLoans.length;
+
+    const recentDiv = document.getElementById("apRecentList");
+    recentDiv.innerHTML = adminLoans.slice(0, 10).map(l => `
+        <div style="display:flex; justify-content:space-between; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+            <div>
+                <div style="font-size:0.85rem; font-weight:600;">${escapeHTML(l.clientName)}</div>
+                <div style="font-size:0.7rem; color:var(--text-muted);">${formatDate(l.createdAt)}</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:0.85rem; font-weight:700;">${formatMoney(l.amount)}</div>
+                <div class="status-pill status-${l.status.toLowerCase()}" style="font-size:0.6rem; padding:2px 6px;">${l.status}</div>
+            </div>
+        </div>
+    `).join("") || `<div style="text-align:center; opacity:0.5; padding:20px;">No loans recorded yet.</div>`;
+
+    // 7. Handle "Commissions" Tab
+    const tabBtn = document.getElementById("tabBtnCommissions");
+    const tabContent = document.getElementById("ap-tab-commissions");
+
+    if (isOwner) {
+        if(tabBtn) tabBtn.style.display = "none";
+        if(tabContent) tabContent.style.display = "none";
+        switchProfileTab('activity');
+    } else {
+        if(tabBtn) tabBtn.style.display = "block";
+
+        let totalCommission = 0;
+        let weightedRateSum = 0;
+
+        const commRows = adminLoans.map(l => {
+            const c = calculateLoanCommission(l);
+            totalCommission += c.amount;
+            weightedRateSum += c.commRate;
+
+            const rateDisplay = (c.commRate * 100).toFixed(1) + "%";
+            const badgeClass = c.isPenalized ? "comm-cut" : "comm-full";
+            const profitStr = formatMoney(c.profit);
+
+            const rateComp = c.isPenalized
+                ? `${(c.actualRate*100).toFixed(0)}% <span style="opacity:0.5">vs ${(c.stdRate*100).toFixed(0)}%</span>`
+                : `<span style="opacity:0.5">Std</span> ${(c.stdRate*100).toFixed(0)}%`;
+
+            return `
+                <tr>
+                    <td>
+                        <div style="font-weight:600;">${escapeHTML(l.clientName)}</div>
+                        <div class="rate-info">Profit: ${profitStr}</div>
+                    </td>
+                    <td style="text-align:right;">
+                         ${formatMoney(c.amount)}
+                    </td>
+                    <td style="text-align:center;">
+                        <div style="font-size:0.8rem;">${rateComp}</div>
+                        ${c.isPenalized ? '<span style="color:#f87171; font-size:0.65rem;">Interest Cut</span>' : '<span style="color:#34d399; font-size:0.65rem;">Full 20%</span>'}
+                    </td>
+                    <td style="text-align:right;">
+                        <span class="comm-badge ${badgeClass}">${rateDisplay}</span>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+
+        document.getElementById("apCommBody").innerHTML = commRows || `<tr><td colspan="4" style="text-align:center; padding:20px; opacity:0.5;">No commissions data.</td></tr>`;
+
+        document.getElementById("apTotalComm").textContent = formatMoney(totalCommission);
+
+        const avgRate = adminLoans.length > 0 ? (weightedRateSum / adminLoans.length) : 0.20;
+        document.getElementById("apAvgComm").textContent = (avgRate * 100).toFixed(1) + "%";
+    }
+
+    openPopup("adminProfileModal");
+};
+
+window.switchProfileTab = function(tabName, btn) {
+    document.querySelectorAll(".sketch-tabs .sketch-btn").forEach(b => b.classList.remove("active"));
+    if(btn) btn.classList.add("active");
+    else {
+        if(tabName === 'activity') document.querySelector("button[onclick*='activity']").classList.add("active");
+        if(tabName === 'commissions') document.querySelector("button[onclick*='commissions']").classList.add("active");
+    }
+    document.querySelectorAll(".profile-tab-content").forEach(d => d.style.display = "none");
+    document.getElementById("ap-tab-" + tabName).style.display = "block";
+};
+
+/* SIDEBAR CLICK-AWAY LISTENER */
+document.addEventListener("DOMContentLoaded", function() {
+    const overlay = document.getElementById("profileOverlay");
+    if (overlay) {
+        overlay.addEventListener("click", function() {
+            // Close the sidebar when the overlay is clicked
+            window.toggleProfileSidebar();
+        });
+    }
+});
+
+/* ============================================================================
    14.0 | EXPENSE & COMMISSION MANAGEMENT (NEW)
    ============================================================================ */
 
+// 1. Initialize Expenses in State
 if (!state.expenses) state.expenses = [];
 
+
+// 3. Open Expense Modal
 window.openExpenseModal = function(type, prefillNote = "") {
     const m = document.getElementById("expenseModal");
     if(!m) return;
@@ -4151,11 +3761,13 @@ window.openExpenseModal = function(type, prefillNote = "") {
     document.getElementById("expDate").value = new Date().toISOString().split('T')[0];
     document.getElementById("expNote").value = prefillNote;
 
+    // Close other modals if open (like Admin Profile)
     document.getElementById("adminProfileModal").classList.add("modal-hidden");
 
     openPopup("expenseModal");
 };
 
+// 4. Save Expense
 window.saveExpense = async function() {
     const amt = Number(document.getElementById("expAmount").value);
     const date = document.getElementById("expDate").value;
@@ -4173,9 +3785,11 @@ window.saveExpense = async function() {
         recordedBy: state.user?.email || "Admin"
     };
 
+    // Update Local State
     if(!state.expenses) state.expenses = [];
     state.expenses.unshift(newExp);
 
+    // Save to DB
     if(!OFFLINE_TEST_MODE && dataRef) {
         await dataRef.child("expenses").child(String(newExp.id)).set(newExp);
     } else {
@@ -4185,6 +3799,374 @@ window.saveExpense = async function() {
     showToast("Expense Recorded!", "success");
     closePopup("expenseModal");
     refreshUI();
+};
+
+/* ============================================================================
+   UPDATED DASHBOARD & CAPITAL RENDERERS
+   ============================================================================ */
+
+/* ============================================================================
+   UPDATED DASHBOARD & CAPITAL RENDERERS (With Staggered Animations)
+   ============================================================================ */
+
+function renderDashboard() {
+  const container = document.getElementById("dashboardStats");
+  if (!container) return;
+
+  const loans = state.loans || [];
+  const expenses = state.expenses || [];
+
+  // 1. Stats
+  const totalLoaned = loans.reduce((s, l) => s + (l.amount || 0), 0);
+  const totalOutstanding = loans.reduce((s, l) => {
+      if (l.status === "DEFAULTED") return s;
+      return s + Math.max(0, l.balance || 0);
+  }, 0);
+  const totalProfit = loans.reduce((s, l) => s + (l.profitCollected || 0), 0);
+  const totalExpenses = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const activeCount = loans.filter(l => l.status === "ACTIVE" || l.status === "OVERDUE").length;
+
+  // 2. Cash on Hand Formula
+  const starting = state.startingCapital || 0;
+  const capitalIn = (state.capitalTxns || []).reduce((s, t) => s + (t.amount || 0), 0);
+  const repaymentsIn = loans.reduce((s, l) => s + (l.paid || 0), 0);
+
+  const cashOnHand = (starting + capitalIn + repaymentsIn) - (totalLoaned + totalExpenses);
+
+  // 3. Update Cash Display
+  const cashEl = document.getElementById("cashOnHandValue");
+  if (cashEl) {
+    cashEl.textContent = formatMoney(cashOnHand);
+    if (cashOnHand < 0) cashEl.classList.add("text-danger-glow");
+    else cashEl.classList.remove("text-danger-glow");
+  }
+
+  // Update Starting Capital UI
+  if (state.startingCapital > 0) {
+      if (document.getElementById("startingCapitalSetupRow")) document.getElementById("startingCapitalSetupRow").style.display = "none";
+      if (document.getElementById("startingCapitalValue")) document.getElementById("startingCapitalValue").textContent = formatMoney(state.startingCapital);
+  } else {
+      if (document.getElementById("startingCapitalSetupRow")) document.getElementById("startingCapitalSetupRow").style.display = "block";
+      if (document.getElementById("startingCapitalValue")) document.getElementById("startingCapitalValue").textContent = "Not set";
+  }
+
+  // --- NEW ANIMATION LOGIC ---
+  // Determine if this is the first load to prevent flashing on the 15-second auto-refresh
+  const isFirstLoad = !(typeof __dashboardAnimRan !== 'undefined' && __dashboardAnimRan);
+  const animClass = isFirstLoad ? "fade-in" : "";
+  const getDelay = (i) => isFirstLoad ? `animation-delay: ${i * 0.12}s;` : "";
+
+  // 4. Render Cards with Staggered Delays
+  container.innerHTML = `
+    <div class="stat-card ${animClass}" style="border-color: var(--primary); ${getDelay(1)}">
+      <div class="stat-label">Active Deals</div>
+      <div class="stat-value" style="font-size: 1.8rem;">${activeCount}</div>
+      <div class="stat-sub">Clients with open balances</div>
+    </div>
+    <div class="stat-card stat-purple ${animClass}" style="${getDelay(2)}">
+      <div class="stat-label">Total Loaned</div>
+      <div class="stat-value" id="statLoaned">${isFirstLoad ? 'K0.00' : formatMoney(totalLoaned)}</div>
+    </div>
+    <div class="stat-card stat-orange ${animClass}" style="${getDelay(3)}">
+      <div class="stat-label">Outstanding</div>
+      <div class="stat-value" id="statOutstanding">${isFirstLoad ? 'K0.00' : formatMoney(totalOutstanding)}</div>
+      <div class="stat-sub">Expected Collection</div>
+    </div>
+    <div class="stat-card stat-green ${animClass}" style="${getDelay(4)}">
+      <div class="stat-label">Net Profit</div>
+      <div class="stat-value" id="statProfit">${isFirstLoad ? 'K0.00' : formatMoney(totalProfit)}</div>
+      <div class="stat-sub">Interest Collected</div>
+    </div>
+    <div class="stat-card ${animClass}" style="border-color:#ef4444; background:rgba(239, 68, 68, 0.05); ${getDelay(5)}">
+      <div class="stat-label" style="color:#ef4444;">Expenses</div>
+      <div class="stat-value" id="statExpenses" style="color:#ef4444;">${isFirstLoad ? 'K0.00' : formatMoney(totalExpenses)}</div>
+      <div class="stat-sub">Commissions & Costs</div>
+    </div>
+  `;
+
+  // 5. Trigger Number Counting Animation
+  if (isFirstLoad) {
+      animateValue(document.getElementById("statLoaned"), 0, totalLoaned, 1500);
+      animateValue(document.getElementById("statOutstanding"), 0, totalOutstanding, 2000);
+      animateValue(document.getElementById("statProfit"), 0, totalProfit, 2500);
+      animateValue(document.getElementById("statExpenses"), 0, totalExpenses, 3000);
+      __dashboardAnimRan = true; // Mark as run so it doesn't loop forever
+  }
+}
+
+/* ============================================================================
+   13.0 | ADMIN PROFILE & COMMISSION LOGIC (Final: 25% + Policy Note + Aligned)
+   ============================================================================ */
+
+/**
+ * Calculates commission with the "Penalty Logic"
+ * Standard: 25% of Profit
+ * Penalty: If Actual Rate < Standard Rate, Commission drops by same %
+ */
+function calculateLoanCommission(loan) {
+    // 1. Determine Standard Rate for this Plan
+    const stdRate = INTEREST_BY_PLAN[loan.plan] || 0.40; // Default to 40% if unknown
+
+    // 2. Determine Actual Rate Given
+    const actualRate = (loan.customInterest !== undefined && loan.customInterest !== null)
+                        ? (Number(loan.customInterest) / 100)
+                        : stdRate;
+
+    // 3. Calculate Profit (Interest portion of Total Due)
+    const principal = Number(loan.amount || 0);
+    const totalDue = Number(loan.totalDue || 0);
+    const profit = Math.max(0, totalDue - principal);
+
+    // 4. Calculate Penalty Factor
+    let reductionFactor = 0;
+
+    // Only apply penalty if rate was actually cut (ignore small rounding diffs)
+    if (actualRate < (stdRate - 0.01) && stdRate > 0) {
+        reductionFactor = (stdRate - actualRate) / stdRate;
+    }
+
+    // 5. Calculate Final Commission Rate
+    // ✅ BASE: 25% (0.25)
+    const BASE_COMMISSION = 0.25;
+    let finalCommRate = BASE_COMMISSION * (1 - reductionFactor);
+
+    // Safety: Cap at 25% and min 0%
+    finalCommRate = Math.max(0, Math.min(BASE_COMMISSION, finalCommRate));
+
+    // 6. Calculate Amount
+    const commissionAmount = profit * finalCommRate;
+
+    return {
+        profit: profit,
+        stdRate: stdRate,
+        actualRate: actualRate,
+        commRate: finalCommRate,
+        amount: commissionAmount,
+        isPenalized: reductionFactor > 0.01
+    };
+}
+
+window.openAdminProfile = function(identifier) {
+    // 1. Force Sidebar to Close
+    const sidebar = document.getElementById("profileSidebar");
+    const overlay = document.getElementById("profileOverlay");
+    if (sidebar) sidebar.classList.remove("open");
+    if (overlay) overlay.classList.add("hidden");
+
+    // 2. Find the Admin Data
+    const admin = state.admins.find(a =>
+        String(a.uid) === String(identifier) ||
+        String(a.email) === String(identifier)
+    );
+
+    if (!admin) {
+        showToast("Admin profile not found", "error");
+        return;
+    }
+
+    // 3. Check Permissions
+    const nameLower = (admin.name || "").toLowerCase();
+    const isOwner = nameLower.includes("prince") || nameLower.includes("kasininga");
+
+    // 4. Populate Header
+    const initials = getInitials(admin.name);
+    const elAvatar = document.getElementById("apAvatar");
+    elAvatar.textContent = initials;
+    const colorIdx = (admin.name.length) % 5;
+    elAvatar.className = `avatar avatar-${colorIdx}`;
+    elAvatar.style.width = "80px";
+    elAvatar.style.height = "80px";
+    elAvatar.style.fontSize = "2rem";
+    elAvatar.style.margin = "0 auto 12px auto";
+
+    document.getElementById("apName").textContent = admin.name;
+    document.getElementById("apRole").textContent = (admin.role || "Admin").toUpperCase();
+    document.getElementById("apContact").textContent = admin.email || admin.phone || "";
+
+    // 5. Find Associated Loans
+    const adminLoans = state.loans.filter(l => {
+        const creator = (l.createdBy || "").toLowerCase();
+        return creator === nameLower || (nameLower.includes("nyambi") && creator === "nyambi sitaleka");
+    });
+
+    // 6. Render "Activity" Tab (Recent Loans)
+    document.getElementById("apLoansCount").textContent = adminLoans.length;
+    const recentDiv = document.getElementById("apRecentList");
+    const sortedLoans = [...adminLoans].sort((a,b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
+
+    if (sortedLoans.length === 0) {
+        recentDiv.innerHTML = `<div style="text-align:center; opacity:0.5; padding:20px;">No loans recorded yet.</div>`;
+    } else {
+        recentDiv.innerHTML = sortedLoans.slice(0, 10).map(l => `
+            <div style="display:flex; justify-content:space-between; padding:12px; background:rgba(255,255,255,0.03); border-radius:10px; border:1px solid rgba(255,255,255,0.05); align-items:center; margin-bottom:6px;">
+                <div>
+                    <div style="font-size:0.9rem; font-weight:600;">${escapeHTML(l.clientName)}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">${formatDate(l.startDate)}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:0.9rem; font-weight:700;">${formatMoney(l.amount)}</div>
+                    <span class="status-pill status-${l.status.toLowerCase()}" style="font-size:0.65rem; padding:2px 8px; margin-top:4px; display:inline-block;">${l.status}</span>
+                </div>
+            </div>
+        `).join("");
+    }
+
+    // 7. Handle "Commissions" Tab
+    const tabBtn = document.getElementById("tabBtnCommissions");
+    const tabContent = document.getElementById("ap-tab-commissions");
+
+    if (isOwner) {
+        if(tabBtn) tabBtn.style.display = "none";
+        if(tabContent) tabContent.style.display = "none";
+        switchProfileTab('activity');
+    } else {
+        if(tabBtn) tabBtn.style.display = "block";
+
+        // A. Calculate Financials
+        let totalEarned = 0;
+        let weightedRateSum = 0;
+
+        const commissionRows = adminLoans.map(l => {
+            const c = calculateLoanCommission(l);
+            totalEarned += c.amount;
+            weightedRateSum += c.commRate;
+            return { loan: l, ...c };
+        });
+
+        const paidComm = (state.expenses || [])
+            .filter(e => e.category === 'Commission' && e.note.toLowerCase().includes(nameLower))
+            .reduce((s, e) => s + e.amount, 0);
+
+        const pendingComm = Math.max(0, totalEarned - paidComm);
+
+        // B. Render Layout
+        // 1. Summary Card
+        let html = `
+            <div style="background:linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); padding:20px; border-radius:16px; margin-bottom:20px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="display:flex; justify-content:space-between; margin-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:15px;">
+                    <div>
+                        <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#94a3b8; margin-bottom:4px;">Total Earned</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:#34d399;">${formatMoney(totalEarned)}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#94a3b8; margin-bottom:4px;">Total Paid</div>
+                        <div style="font-size:1.1rem; font-weight:700; color:#93c5fd;">${formatMoney(paidComm)}</div>
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <div>
+                        <div style="font-size:0.8rem; font-weight:600; color:#fff;">Pending Payout</div>
+                        <div style="font-size:0.75rem; color:#94a3b8;">Available to withdraw</div>
+                    </div>
+                    <div style="font-size:1.4rem; font-weight:800; color:#facc15;">${formatMoney(pendingComm)}</div>
+                </div>
+
+                <button onclick="openExpenseModal('Commission', 'Commission Payment for ${escapeHTML(admin.name)}')"
+                    style="width:100%; background:#facc15; color:#000; border:none; padding:12px; border-radius:10px; font-weight:700; font-size:0.95rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 15px rgba(250, 204, 21, 0.2);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                    Pay Commission
+                </button>
+            </div>
+        `;
+
+        // 2. Policy Notice (Restored!)
+        html += `
+            <div style="background:rgba(59, 130, 246, 0.1); border:1px solid rgba(59, 130, 246, 0.2); padding:12px; border-radius:12px; font-size:0.75rem; color:#93c5fd; margin-bottom:20px; line-height:1.4;">
+                <strong>ℹ️ Policy:</strong> Standard commission is 25% of profit. If the loan interest rate is discounted, the commission % is reduced by the same proportion.
+            </div>
+        `;
+
+        // 3. Detailed Table
+        html += `
+            <div style="background:rgba(255,255,255,0.02); border-radius:12px; overflow:hidden; border:1px solid rgba(255,255,255,0.05);">
+                <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                    <thead>
+                        <tr style="background:rgba(255,255,255,0.05); text-align:left;">
+                            <th style="padding:12px 15px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase;">Loan Details</th>
+                            <th style="padding:12px 10px; text-align:right; color:#94a3b8; font-size:0.75rem; text-transform:uppercase;">Loan Profit</th>
+                            <th style="padding:12px 10px; text-align:center; color:#94a3b8; font-size:0.75rem; text-transform:uppercase;">Your Cut</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        if (commissionRows.length === 0) {
+            html += `<tr><td colspan="3" style="text-align:center; padding:30px; opacity:0.5; font-style:italic;">No commission history found.</td></tr>`;
+        } else {
+            // Sort by Date Descending
+            commissionRows.sort((a,b) => new Date(b.loan.startDate) - new Date(a.loan.startDate));
+
+            html += commissionRows.map(row => {
+                const profitStr = formatMoney(row.profit);
+                const commStr = formatMoney(row.amount);
+
+                // Badge Logic
+                let badgeHtml = '';
+                if (row.isPenalized) {
+                    badgeHtml = `
+                        <div style="margin-top:4px; display:flex; justify-content:flex-end;">
+                            <span style="background:rgba(239, 68, 68, 0.15); color:#f87171; border:1px solid rgba(239, 68, 68, 0.2); padding:2px 6px; border-radius:4px; font-size:0.65rem; font-weight:700;">
+                                ⚠️ Interest Cut
+                            </span>
+                            <span style="font-size:0.7rem; color:#94a3b8; margin-left:4px;">(${(row.commRate*100).toFixed(0)}%)</span>
+                        </div>
+                    `;
+                } else {
+                    badgeHtml = `
+                        <div style="margin-top:4px; display:flex; justify-content:flex-end; text-align:right;">
+                            <span style="background:rgba(52, 211, 153, 0.15); color:#34d399; border:1px solid rgba(52, 211, 153, 0.2); padding:2px 6px; border-radius:4px; font-size:0.65rem; font-weight:700;">
+                                ✔️ 25% Std
+                            </span>
+                        </div>
+                    `;
+                }
+
+                return `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <td style="padding:12px 15px;">
+                        <div style="font-weight:700; color:var(--text-main);">${escapeHTML(row.loan.clientName)}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
+                           ${formatDate(row.loan.startDate)}
+                        </div>
+                    </td>
+                    <td style="padding:12px 10px; text-align:right;">
+                        <div style="font-weight:600; opacity:0.9;">${profitStr}</div>
+                        <div style="font-size:0.90rem; color:#94a3b8; text-align:left;">Generated profit</div>
+                    </td>
+                    <td style="padding:12px 10px; text-align:left;">
+                        <div style="font-weight:800; color:#34d399; font-size:0.95rem;">+${commStr}</div>
+                        ${badgeHtml}
+                    </td>
+                </tr>`;
+            }).join("");
+        }
+
+        html += `</tbody></table></div>`;
+
+        // Update Header Stats
+        if(document.getElementById("apTotalComm")) document.getElementById("apTotalComm").textContent = formatMoney(totalEarned);
+        if(document.getElementById("apAvgComm")) {
+             const avgRate = adminLoans.length > 0 ? (weightedRateSum / adminLoans.length) : 0.25;
+             document.getElementById("apAvgComm").textContent = (avgRate * 100).toFixed(1) + "%";
+        }
+
+        // Inject Content
+        tabContent.innerHTML = html;
+    }
+
+    openPopup("adminProfileModal");
+};
+
+window.switchProfileTab = function(tabName, btn) {
+    document.querySelectorAll(".sketch-tabs .sketch-btn").forEach(b => b.classList.remove("active"));
+    if(btn) btn.classList.add("active");
+    else {
+        if(tabName === 'activity') document.querySelector("button[onclick*='activity']")?.classList.add("active");
+        if(tabName === 'commissions') document.querySelector("button[onclick*='commissions']")?.classList.add("active");
+    }
+    document.querySelectorAll(".profile-tab-content").forEach(d => d.style.display = "none");
+    document.getElementById("ap-tab-" + tabName).style.display = "block";
 };
 
 // ============================================================================
@@ -4203,6 +4185,7 @@ window.fetchAndRenderAdminPaymentMethods = async function() {
     tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
 
     try {
+        // Fetch from the root paymentMethods node
         const snapshot = await firebase.database().ref('paymentMethods').once('value');
         const methods = snapshot.val() || {};
         const keys = Object.keys(methods);
@@ -4241,6 +4224,7 @@ window.addPaymentMethod = async function() {
         return;
     }
 
+    // Generate a unique key
     const key = "pm_" + Date.now();
     const newMethod = { name, phone };
 
@@ -4249,7 +4233,7 @@ window.addPaymentMethod = async function() {
         showToast("Payment method added!", "success");
         nameEl.value = "";
         phoneEl.value = "";
-        fetchAndRenderAdminPaymentMethods();
+        fetchAndRenderAdminPaymentMethods(); // Refresh the list
     } catch (e) {
         showToast("Failed to save.", "error");
     }
@@ -4265,7 +4249,7 @@ window.deletePaymentMethod = function(key) {
             try {
                 await firebase.database().ref(`paymentMethods/${key}`).remove();
                 showToast("Payment method removed", "success");
-                fetchAndRenderAdminPaymentMethods();
+                fetchAndRenderAdminPaymentMethods(); // Refresh the list
             } catch (e) {
                 showToast("Failed to remove", "error");
             }
@@ -4283,9 +4267,9 @@ window.confirmAdminDialog = function() {
         return;
     }
 
-    const callbackToRun = __adminDialogCallback;
-    closeAdminDialog();
-    if (typeof callbackToRun === 'function') callbackToRun(val);
+    const callbackToRun = __adminDialogCallback; // 1. Save the command FIRST
+    closeAdminDialog();                          // 2. Close the window
+    if (typeof callbackToRun === 'function') callbackToRun(val); // 3. Run the command
 };
 
 // ============================================================================
@@ -4302,6 +4286,7 @@ window.openAllRequestsModal = function() {
 window.filterAllRequests = function(status, btnElement) {
     __requestsFilter = status;
 
+    // Update chip styling
     const parent = btnElement.parentElement;
     if (parent) {
         parent.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
@@ -4317,9 +4302,11 @@ window.fetchAndRenderAllRequests = async function() {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading requests log...</td></tr>`;
 
     try {
+        // Fetch from the root loanRequests node
         const snapshot = await firebase.database().ref('stallzShared_v1/loanRequests').once('value');
         const reqsObj = snapshot.val() || {};
 
+        // Convert to array and sort newest first
         __allRequestsCache = Object.values(reqsObj).sort((a, b) => {
             const dateA = new Date(a.createdAt || 0);
             const dateB = new Date(b.createdAt || 0);
@@ -4343,6 +4330,7 @@ window.renderAllRequestsTable = function() {
     const tbody = document.getElementById("allRequestsBody");
     if (!tbody) return;
 
+    // Apply Filters
     let filtered = __allRequestsCache;
     if (__requestsFilter !== 'ALL') {
         filtered = filtered.filter(r => {
@@ -4357,11 +4345,12 @@ window.renderAllRequestsTable = function() {
         return;
     }
 
+    // Render Table
     tbody.innerHTML = filtered.map(req => {
         const dateStr = req.createdAt ? new Date(req.createdAt).toLocaleDateString("en-ZM", { day: 'numeric', month: 'short', year: '2-digit' }) : "-";
 
         let status = String(req.status || "PENDING").toUpperCase();
-        if (status === "DECLINED") status = "REJECTED";
+        if (status === "DECLINED") status = "REJECTED"; // Normalization
 
         let statusHtml = "";
         if (status === "PENDING") {
@@ -4372,6 +4361,7 @@ window.renderAllRequestsTable = function() {
             statusHtml = `<span style="background:rgba(239, 68, 68, 0.1); color:#ef4444; padding:4px 8px; border-radius:4px; font-size:0.65rem; font-weight:700;">DECLINED</span>`;
         }
 
+        // Show note/reason if rejected
         let reasonHtml = "";
         const rejectReason = req.declineReason || req.rejectionReason || req.reason;
         if ((status === "REJECTED" || status === "DECLINED") && rejectReason) {
@@ -4403,19 +4393,24 @@ window.renderAllRequestsTable = function() {
 };
 
 window.viewRequestLogDetails = function(reqId) {
+    // 1. Fetch the exact request from our cache (even if it's old and rejected)
     const req = __allRequestsCache.find(r => String(r.id) === String(reqId));
     if (!req) return;
 
+    // 2. Safely inject it into the shared cache so the standard modal can read it
     if (!window.StallzShared) window.StallzShared = {};
     if (!window.StallzShared._cache) window.StallzShared._cache = {};
     if (!window.StallzShared._cache.loanRequests) window.StallzShared._cache.loanRequests = {};
     window.StallzShared._cache.loanRequests[reqId] = req;
 
+    // 3. Close the Log table
     closePopup('allRequestsModal');
 
+    // 4. Open the Request popup details
     setTimeout(() => {
         window.openLoanRequestModal(reqId);
 
+        // Hide the "Approve/Reject" buttons if it's an old request that's already processed
         const status = String(req.status || "PENDING").toUpperCase();
         const footer = document.getElementById("loanRequestBody").nextElementSibling;
         if (footer) {
@@ -4433,6 +4428,7 @@ window.generateLinkCode = async function(phone, name) {
     if (!cleanPhone) return showToast("This client needs a phone number first to generate a code.", "error");
 
     try {
+        // 1. Check if a code ALREADY exists for this phone number
         const snap = await dataRef.child('activeLinkCodes').once('value');
         const allCodes = snap.val() || {};
 
@@ -4445,6 +4441,7 @@ window.generateLinkCode = async function(phone, name) {
         }
 
         if (existingCode) {
+            // 2a. Reveal the existing persistent code
             showAdminDialog({
                 title: 'Active Link Code Exists',
                 message: `This client already has an active code waiting for them:\n\n👉  ${existingCode}  👈\n\nThis code will remain active until they use it to sync their account.`,
@@ -4454,6 +4451,7 @@ window.generateLinkCode = async function(phone, name) {
             return;
         }
 
+        // 2b. If no code exists, generate a new persistent one
         const code = Math.floor(100000 + Math.random() * 900000).toString();
 
         await dataRef.child(`activeLinkCodes/${code}`).set({
@@ -4473,26 +4471,15 @@ window.generateLinkCode = async function(phone, name) {
     }
 };
 
-// 🚨 FIX: Multi-Admin Sync Race Conditions Prevented via Transactions
 function startSyncCodeProcessor() {
     if (typeof firebase === 'undefined' || OFFLINE_TEST_MODE) return;
 
+    // Listen for clients submitting codes from their app
     firebase.database().ref('stallzShared_v1/loanRequests').on('child_added', async (snap) => {
         const req = snap.val();
         if (req && req.type === "SYNC_CODE" && req.code && req.clientUid) {
 
-            const reqRef = firebase.database().ref(`stallzShared_v1/loanRequests/${snap.key}`);
-
-            const result = await reqRef.transaction((currentData) => {
-                if (currentData && !currentData.isProcessing) {
-                    currentData.isProcessing = true;
-                    return currentData;
-                }
-                return;
-            });
-
-            if (!result.committed) return;
-
+            // 1. Verify the code exists in the Admin database
             const codeSnap = await dataRef.child(`activeLinkCodes/${req.code}`).once('value');
             if (codeSnap.exists()) {
                 const targetPhone = codeSnap.val().targetPhone;
@@ -4500,13 +4487,17 @@ function startSyncCodeProcessor() {
                 let updatedCount = 0;
                 const updates = {};
 
+                // 2. Find all manual loans matching that phone and bind them to the new UID
                 (state.loans || []).forEach(loan => {
                     const lPhone = String(loan.clientPhone || "").replace(/\D/g, "");
                     if (lPhone === targetPhone && !loan.clientUid) {
-                        loan.clientUid = uid;
+                        loan.clientUid = uid; // Attach UID
 
+                        // Update Master Database
                         const primaryPath = loan.__primaryLoanPath || `loans/${loan.id}`;
                         updates[`loanManagerData_v5/${primaryPath}/clientUid`] = uid;
+
+                        // Push immediately to the Client's Portal
                         updates[`clients/${uid}/loans/${loan.id}`] = loan;
                         updatedCount++;
                     }
@@ -4517,14 +4508,17 @@ function startSyncCodeProcessor() {
                     showToast(`Code ${req.code} redeemed! Auto-linked ${updatedCount} loans to App user.`, "success");
                 }
 
+                // 3. Delete the used code so it can't be used again
                 await dataRef.child(`activeLinkCodes/${req.code}`).remove();
             }
 
-            await reqRef.remove();
+            // 4. Always delete the client's request payload to keep the queue clean
+            await firebase.database().ref(`stallzShared_v1/loanRequests/${snap.key}`).remove();
         }
     });
 }
 
+// Start the processor 3 seconds after the Admin app loads
 document.addEventListener("DOMContentLoaded", () => {
     setTimeout(startSyncCodeProcessor, 3000);
 });
@@ -4535,21 +4529,16 @@ document.addEventListener("DOMContentLoaded", () => {
 async function runSmartEngagementEngine() {
     if (!state.dataLoaded || OFFLINE_TEST_MODE) return;
 
-    // 🚨 CRITICAL FIX: Only the Owner's browser is allowed to run the automated CRON job.
-    const role = state.currentUserProfile?.role || localStorage.getItem('stallz_offline_role') || '';
-    if (role.toLowerCase() !== 'owner') {
-        console.log("Engagement Engine skipped: User is not Owner.");
-        return;
-    }
-
     try {
         const now = Date.now();
+        // Fetch the log to ensure we don't spam clients repeatedly
         const logSnap = await firebase.database().ref('engagementLog').once('value');
         const engagementLog = logSnap.val() || {};
 
         const updates = {};
         let messagesSent = 0;
 
+        // Get all registered app users
         const users = window.StallzShared?.listUsers?.("client") || [];
 
         for (const user of users) {
@@ -4562,10 +4551,16 @@ async function runSmartEngagementEngine() {
 
             const firstName = (user.name || "Client").split(' ')[0];
 
+            // ---------------------------------------------------------
+            // CAMPAIGN 1: THE RETENTION OFFER (Inactive Users)
+            // ---------------------------------------------------------
+            // If they have NO active loans, and their last loan was paid over 7 days ago
             if (activeLoans.length === 0 && userLoans.length > 0) {
+                // Find their most recent loan
                 const lastLoan = userLoans.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))[0];
                 const daysSincePaid = (now - new Date(lastLoan.updatedAt || lastLoan.createdAt).getTime()) / (1000 * 3600 * 24);
 
+                // Send if it's been > 7 days, and we haven't sent this specific promo in 14 days
                 if (daysSincePaid > 7 && (!userLog.retention || (now - userLog.retention > 14 * 24 * 3600 * 1000))) {
                     const notifId = "n_" + Date.now() + Math.floor(Math.random() * 1000);
                     updates[`clients/${uid}/notifications/${notifId}`] = {
@@ -4581,11 +4576,15 @@ async function runSmartEngagementEngine() {
                 }
             }
 
+            // ---------------------------------------------------------
+            // CAMPAIGN 2: THE BITE-SIZED PAYMENT HACK (Active Users)
+            // ---------------------------------------------------------
             if (activeLoans.length > 0) {
                 const loan = activeLoans[0];
                 const dueDate = parseDateSmart(loan.dueDate);
                 const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - now) / (1000 * 3600 * 24)) : 0;
 
+                // Send if they have more than 3 days left, and haven't gotten this tip in 7 days
                 if (daysLeft > 3 && loan.balance > 0 && (!userLog.daily_hack || (now - userLog.daily_hack > 7 * 24 * 3600 * 1000))) {
                     const dailyAmount = Math.ceil(loan.balance / daysLeft);
 
@@ -4602,6 +4601,10 @@ async function runSmartEngagementEngine() {
                     messagesSent++;
                 }
 
+                // ---------------------------------------------------------
+                // CAMPAIGN 3: THE 3-DAY WARNING (Active Users)
+                // ---------------------------------------------------------
+                // Send ONLY ONCE for this specific loan when it hits 3 days left
                 if (daysLeft === 3 && loan.balance > 0 && userLog.warning_3day !== loan.id) {
                     const notifId = "n_" + Date.now() + Math.floor(Math.random() * 1000);
                     updates[`clients/${uid}/notifications/${notifId}`] = {
@@ -4612,12 +4615,13 @@ async function runSmartEngagementEngine() {
                         createdAt: new Date().toISOString(),
                         type: "ALERT"
                     };
-                    updates[`engagementLog/${uid}/warning_3day`] = loan.id;
+                    updates[`engagementLog/${uid}/warning_3day`] = loan.id; // Log the specific loan ID so it doesn't fire twice
                     messagesSent++;
                 }
             }
         }
 
+       // If we generated any messages, execute the silent database update
         if (messagesSent > 0) {
             await firebase.database().ref().update(updates);
             console.log(`🚀 Smart Engine fired ${messagesSent} automated nudges.`);
@@ -4627,3 +4631,4 @@ async function runSmartEngagementEngine() {
         console.warn("Engagement Engine error:", error);
     }
 }
+
